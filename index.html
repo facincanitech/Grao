@@ -190,13 +190,29 @@ async function startMining(){
   if(!S.user){ toast('Faça login primeiro!','error'); return }
   if(S.mining) return;
 
-  const lastMine = await db.settings.get('lastMine');
-  if(lastMine){
-    const elapsed = Date.now() - lastMine.value;
-    if(elapsed < cooldownMs()){
-      const mins = Math.ceil((cooldownMs() - elapsed)/60000);
-      toast(`Cooldown: ${mins} minuto(s) restante(s)`,'warning');
-      return;
+  // Checa cooldown no Supabase (sincroniza entre dispositivos)
+  try{
+    const { data } = await sb.from('users').select('last_mine').eq('discord_id', S.user.id).single();
+    if(data?.last_mine){
+      const elapsed = Date.now() - data.last_mine;
+      if(elapsed < cooldownMs()){
+        const mins = Math.ceil((cooldownMs()-elapsed)/60000);
+        const secs = Math.ceil((cooldownMs()-elapsed)/1000) % 60;
+        toast(`Cooldown: ${mins}m ${secs}s restante(s)`,'warning');
+        await db.settings.put({ key:'lastMine', value: data.last_mine });
+        return;
+      }
+    }
+  }catch(e){
+    // fallback local
+    const lastMine = await db.settings.get('lastMine');
+    if(lastMine){
+      const elapsed = Date.now() - lastMine.value;
+      if(elapsed < cooldownMs()){
+        const mins = Math.ceil((cooldownMs()-elapsed)/60000);
+        toast(`Cooldown: ${mins} minuto(s) restante(s)`,'warning');
+        return;
+      }
     }
   }
 
@@ -252,8 +268,11 @@ async function finishMining(hash, rarity, nonce){
   };
   grain.signature = await signGrain(grain);
   await db.grains.add(grain);
-  await db.settings.put({ key:'lastMine', value: Date.now() });
-  sbUpsertGrain(grain); // fire & forget
+  const now = Date.now();
+  await db.settings.put({ key:'lastMine', value: now });
+  sbUpsertGrain(grain);
+  // salva cooldown no Supabase para bloquear outros dispositivos
+  sb.from('users').update({ last_mine: now }).eq('discord_id', user.id).then(()=>{});
 
   S.mining = false;
   S.miningProgress = 100;
@@ -893,11 +912,21 @@ function startCdTimer(){
   const tick = async () => {
     const el = document.getElementById('cd-timer');
     if(!el) return;
-    const lm = await db.settings.get('lastMine');
-    if(!lm) return;
-    const rem = cooldownMs() - (Date.now()-lm.value);
+    // tenta pegar do Supabase primeiro
+    let lastMineVal = 0;
+    try{
+      const { data } = await sb.from('users').select('last_mine').eq('discord_id', S.user.id).single();
+      if(data?.last_mine) lastMineVal = data.last_mine;
+    }catch(e){}
+    if(!lastMineVal){
+      const lm = await db.settings.get('lastMine');
+      lastMineVal = lm?.value || 0;
+    }
+    if(!lastMineVal) return;
+    const rem = cooldownMs() - (Date.now()-lastMineVal);
     if(rem <= 0){ render(); return }
-    el.textContent = `${Math.floor(rem/60000)}m ${Math.floor((rem%60000)/1000)}s`;
+    const el2 = document.getElementById('cd-timer');
+    if(el2) el2.textContent = `${Math.floor(rem/60000)}m ${Math.floor((rem%60000)/1000)}s`;
     setTimeout(tick, 1000);
   };
   setTimeout(tick, 500);
