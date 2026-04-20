@@ -48,7 +48,7 @@
 const CFG = {
   DISCORD_CLIENT_ID: '1495818274594754711',
   get REDIRECT_URI(){ return window.location.origin + window.location.pathname },
-  COOLDOWN_MS: 60 * 60 * 1000,
+  BASE_COOLDOWN_MS: 5 * 60 * 1000,
   CHUNK_SIZE: 800,
   PEER_CFG: { host:'0.peerjs.com', port:443, secure:true, path:'/' }
 };
@@ -107,6 +107,8 @@ function leadingZeros(h){ let n=0; for(const c of h){if(c==='0')n++;else break} 
 // DIFICULDADE
 // ═══════════════════════════════════════════════════════
 function diffOffset(){ return Math.floor(S.networkSize / 50) }
+// 5min base + 1min por nó adicional, máx 60min
+function cooldownMs(){ return Math.min(CFG.BASE_COOLDOWN_MS + (S.networkSize - 1) * 60000, 60 * 60 * 1000) }
 function minZeros(){ return 1 + diffOffset() }
 function rarityForZeros(z){
   const o = diffOffset();
@@ -149,8 +151,8 @@ async function startMining(){
   const lastMine = await db.settings.get('lastMine');
   if(lastMine){
     const elapsed = Date.now() - lastMine.value;
-    if(elapsed < CFG.COOLDOWN_MS){
-      const mins = Math.ceil((CFG.COOLDOWN_MS - elapsed)/60000);
+    if(elapsed < cooldownMs()){
+      const mins = Math.ceil((cooldownMs() - elapsed)/60000);
       toast(`Cooldown: ${mins} minuto(s) restante(s)`,'warning');
       return;
     }
@@ -549,37 +551,63 @@ async function pageInventory(){
 async function pageMine(){
   if(!S.user) return pageLogin();
   const lastMine = await db.settings.get('lastMine');
+  const cdMs  = cooldownMs();
   let cd = null;
   if(lastMine){
     const el = Date.now()-lastMine.value;
-    if(el < CFG.COOLDOWN_MS){
-      const r = CFG.COOLDOWN_MS-el;
-      cd = `${Math.floor(r/60000)}m ${Math.floor((r%60000)/1000)}s`;
-    }
+    if(el < cdMs){ const r=cdMs-el; cd=`${Math.floor(r/60000)}m ${Math.floor((r%60000)/1000)}s` }
   }
-  const off = diffOffset();
+  const off      = diffOffset();
+  const cdMins   = Math.round(cdMs/60000);
+  const myGrains = await db.grains.where('owner').equals(S.user.id).toArray();
+  const counts   = {};
+  for(const r of ORDER) counts[r] = myGrains.filter(g=>g.rarity===r).length;
+  const sorted   = [...myGrains].sort((a,b)=>ORDER.indexOf(a.rarity)-ORDER.indexOf(b.rarity));
+
   return `<div class="p-4 sm:p-6 max-w-2xl mx-auto">
     <h2 class="text-2xl font-bold mb-1">⛏️ Mineração</h2>
-    <p class="text-gray-400 text-sm mb-5">Prova de trabalho no browser para minerar Grãos únicos.</p>
-    <div class="bg-gray-900 rounded-lg p-4 mb-4 grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
-      <div class="text-gray-400 text-xs">Tamanho da rede<br><span class="text-cyan-400 text-base" id="net-size2">${S.networkSize} nó${S.networkSize!==1?'s':''}</span></div>
-      <div class="text-gray-400 text-xs">Offset dificuldade<br><span class="text-yellow-400 text-base">+${off}</span></div>
-      <div class="text-gray-400 text-xs">Zeros mínimos<br><span class="text-orange-400 text-base">${minZeros()}</span></div>
+    <p class="text-gray-400 text-sm mb-4">Prova de trabalho no browser para minerar Grãos únicos.</p>
+
+    <div class="bg-gray-900 rounded-lg p-4 mb-4 grid grid-cols-3 gap-3">
+      <div class="text-gray-400 text-xs">Rede<br><span class="text-cyan-400 text-sm font-bold">${S.networkSize} nó${S.networkSize!==1?'s':''}</span></div>
+      <div class="text-gray-400 text-xs">Cooldown<br><span class="text-yellow-400 text-sm font-bold">${cdMins}min</span></div>
+      <div class="text-gray-400 text-xs">Zeros mín.<br><span class="text-orange-400 text-sm font-bold">${minZeros()}</span></div>
     </div>
-    <div class="bg-gray-900 rounded-lg p-4 mb-5">
-      <div class="text-xs text-gray-400 mb-3">Tabela de raridade (dificuldade atual)</div>
+
+    <div class="bg-gray-900 rounded-lg p-4 mb-4">
+      <div class="text-[10px] text-gray-500 mb-2 font-bold uppercase tracking-wide">Tabela de Raridade</div>
+      <div class="grid grid-cols-4 text-[10px] text-gray-600 pb-1 mb-1 border-b border-gray-800">
+        <div>Raridade</div><div class="text-center">Zeros</div><div class="text-center">Chance</div><div class="text-right">Seus</div>
+      </div>
       ${ORDER.map(r=>{
-        const z = RARITY[r].zeros+off;
-        return `<div class="flex items-center justify-between text-xs py-1 border-b border-gray-800">
-          <span class="flex items-center gap-2">${RARITY[r].emoji} <span style="color:${RARITY[r].color}">${RARITY[r].label}</span></span>
-          <span class="font-mono text-gray-500">${'0'.repeat(Math.min(z,8))}${z>8?`…(${z})`:''}… </span>
+        const z    = RARITY[r].zeros + off;
+        const prob = z<=3 ? (1/Math.pow(16,z)*100).toFixed(2)+'%' : z===4 ? '~0.0015%' : '~0.0001%';
+        return `<div class="grid grid-cols-4 items-center py-1 border-b border-gray-800/40 text-xs">
+          <span class="flex items-center gap-1">${RARITY[r].emoji}<span style="color:${RARITY[r].color}">${RARITY[r].label}</span></span>
+          <span class="text-center font-mono text-gray-400">${z}+</span>
+          <span class="text-center text-[10px] text-gray-500">${prob}</span>
+          <span class="text-right font-bold" style="color:${RARITY[r].color}">${counts[r]||0}</span>
         </div>`;
       }).join('')}
+      ${off>0?`<div class="text-[10px] text-yellow-700 mt-2">⚠ Dificuldade +${off} pela rede crescente</div>`:''}
     </div>
-    ${(cd && !S.mining)?`<div class="bg-gray-900 border border-yellow-800/50 rounded-lg p-6 text-center">
-      <div class="text-4xl mb-3">⏳</div>
+
+    ${sorted.length>0?`<div class="bg-gray-900 rounded-lg p-4 mb-4">
+      <div class="text-[10px] text-gray-500 mb-2 font-bold uppercase tracking-wide">Seus Grãos (${sorted.length})</div>
+      <div class="flex flex-wrap gap-1 max-h-24 overflow-y-auto scrollbar-thin">
+        ${sorted.map(g=>`<span onclick="go('grain',{id:'${g.id}'})" title="${new Date(g.generated_at).toLocaleDateString('pt-BR')}"
+          class="cursor-pointer px-2 py-0.5 rounded text-[10px] font-mono border hover:brightness-125 transition-all"
+          style="color:${RARITY[g.rarity].color};border-color:${RARITY[g.rarity].color}40;background:${RARITY[g.rarity].color}10">
+          ${RARITY[g.rarity].emoji} ${g.id}
+        </span>`).join('')}
+      </div>
+    </div>`:''}
+
+    ${(cd && !S.mining)?`<div class="bg-gray-900 border border-yellow-800/50 rounded-lg p-5 text-center">
+      <div class="text-3xl mb-2">⏳</div>
       <div class="text-yellow-400 font-bold mb-1">Cooldown Ativo</div>
       <div class="text-gray-400 text-sm">Próxima mineração em: <span id="cd-timer" class="font-mono text-white">${cd}</span></div>
+      <div class="text-[10px] text-gray-600 mt-2">Cooldown base: 5min · +1min por nó na rede</div>
     </div>`:`<div class="bg-gray-900 rounded-lg p-6 text-center">
       ${S.mining?`<div class="text-5xl mb-3 mining-active">⛏️</div>
         <div class="font-bold mb-4">Minerando...</div>
@@ -589,7 +617,7 @@ async function pageMine(){
         <div class="text-sm text-gray-400 mb-5">Hashrate: <span class="text-cyan-400">${S.hashrate.toLocaleString()} H/s</span></div>
         <button onclick="cancelMining()" class="bg-red-900 hover:bg-red-800 px-6 py-2 rounded text-sm transition-colors">✕ Cancelar</button>
       `:`<div class="text-6xl mb-4">🌾</div>
-        <p class="text-gray-400 text-sm mb-6">Clique para iniciar a prova de trabalho.<br>Mais zeros no hash = Grão mais raro!</p>
+        <p class="text-gray-400 text-sm mb-6">Mais zeros no hash = Grão mais raro!<br>Cooldown: ${cdMins} minuto${cdMins!==1?'s':''} após minerar.</p>
         <button onclick="startMining()" class="bg-cyan-700 hover:bg-cyan-600 px-8 py-3 rounded-lg font-bold text-lg transition-colors">
           ⛏️ Começar Mineração
         </button>`}
@@ -802,7 +830,7 @@ function startCdTimer(){
     if(!el) return;
     const lm = await db.settings.get('lastMine');
     if(!lm) return;
-    const rem = CFG.COOLDOWN_MS - (Date.now()-lm.value);
+    const rem = cooldownMs() - (Date.now()-lm.value);
     if(rem <= 0){ render(); return }
     el.textContent = `${Math.floor(rem/60000)}m ${Math.floor((rem%60000)/1000)}s`;
     setTimeout(tick, 1000);
