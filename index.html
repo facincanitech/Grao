@@ -347,8 +347,8 @@ async function handleDiscordCallback(){
     toast(`Bem-vindo, ${user.global_name||user.username}!`,'success');
     sbUpsertUser(user);
     updateNetworkSize();
-    // sincroniza grãos locais que ainda não foram ao Supabase
-    syncLocalGrains(user.id);
+    await syncFromSupabase(user.id); // restaura grãos do servidor primeiro
+    syncLocalGrains(user.id);        // depois sobe os locais que faltam
     return true;
   }catch(e){
     toast('Erro ao autenticar com Discord','error');
@@ -547,6 +547,26 @@ async function syncLocalGrains(userId){
   try{
     const local = await db.grains.where('owner').equals(userId).toArray();
     for(const g of local) await sbUpsertGrain(g);
+  }catch(e){}
+}
+
+async function syncFromSupabase(userId){
+  try{
+    const { data, error } = await sb.from('grains').select('*').eq('owner', userId);
+    if(error || !data?.length) return;
+    let restored = 0;
+    for(const g of data){
+      const exists = await db.grains.where('id').equals(g.id).first();
+      if(!exists){
+        // remove campo localId se vier do supabase
+        const { localId, ...grain } = g;
+        await db.grains.add(grain);
+        restored++;
+      }
+    }
+    if(restored > 0){
+      toast(`✅ ${restored} Grão${restored!==1?'s':''} restaurado${restored!==1?'s':''} do servidor!`,'success',5000);
+    }
   }catch(e){}
 }
 
@@ -1057,6 +1077,7 @@ async function init(){
       S.user = saved.value;
       sbUpsertUser(S.user);
       updateNetworkSize();
+      await syncFromSupabase(S.user.id);
       syncLocalGrains(S.user.id);
     }
   }
