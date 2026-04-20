@@ -125,7 +125,9 @@ const S = {
   networkSize: 1,
   peers: new Map(),
   peerId: null,
-  transferTarget: ''
+  transferTarget: '',
+  lavoura: null,
+  myContrib: 0
 };
 
 // ═══════════════════════════════════════════════════════
@@ -271,8 +273,8 @@ async function finishMining(hash, rarity, nonce){
   const now = Date.now();
   await db.settings.put({ key:'lastMine', value: now });
   sbUpsertGrain(grain);
-  // salva cooldown no Supabase para bloquear outros dispositivos
   sb.from('users').update({ last_mine: now }).eq('discord_id', user.id).then(()=>{});
+  addGrainToLavoura(grain);
 
   S.mining = false;
   S.miningProgress = 100;
@@ -463,6 +465,82 @@ function syncNetwork(){ updateNetSize() }
 function updateHeader(){
   const el = document.getElementById('net-size');
   if(el) el.textContent = `${S.networkSize} nó${S.networkSize!==1?'s':''}`;
+}
+
+// ═══════════════════════════════════════════════════════
+// SISTEMA DE LAVOURA
+// ═══════════════════════════════════════════════════════
+function lavouraRewardRarity(n){
+  if(n <= 1) return 'brass';
+  if(n <= 2) return 'copper';
+  if(n <= 7) return 'silver';
+  return 'gold';
+}
+
+function lavouraCapacity(n){
+  return Math.pow(10, n + 2);
+}
+
+async function loadLavoura(){
+  try{
+    const { data } = await sb.from('lavouras').select('*').eq('status','active').order('number').limit(1).single();
+    if(data){
+      S.lavoura = data;
+      if(S.user){
+        const { data: c } = await sb.from('lavoura_contributions')
+          .select('grains_count').eq('lavoura_id', data.id).eq('discord_id', S.user.id).single();
+        S.myContrib = c?.grains_count || 0;
+      }
+    }
+  }catch(e){}
+}
+
+async function addGrainToLavoura(grain){
+  if(!S.lavoura || !S.user) return;
+  try{
+    const { data } = await sb.rpc('add_grain_to_lavoura',{
+      p_lavoura_id: S.lavoura.id,
+      p_discord_id: S.user.id,
+      p_discord_user: grain.discord_user
+    });
+    if(data && !data.error){
+      S.lavoura.grains_count = data.count;
+      S.myContrib = (S.myContrib || 0) + 1;
+      if(data.full) await handleHarvest();
+    }
+  }catch(e){}
+}
+
+async function handleHarvest(){
+  try{
+    const { data } = await sb.rpc('harvest_lavoura',{ p_lavoura_id: S.lavoura.id });
+    if(data?.error) return; // outro device já colheu
+    const lavNum  = S.lavoura.number;
+    const isWinner = data.top_id === S.user.id;
+    if(isWinner){
+      const rarity = lavouraRewardRarity(lavNum);
+      const id     = await nextId(rarity);
+      const reward = {
+        id, rarity, nonce: 0,
+        hash: await sha256(`reward:lavoura${lavNum}:${S.user.id}:${Date.now()}`),
+        generated_at: Date.now(),
+        discord_user: S.user.global_name || S.user.username,
+        discord_id: S.user.id,
+        network_size_at_generation: S.networkSize,
+        owner: S.user.id,
+        transfer_history: [],
+        reward_from_lavoura: lavNum
+      };
+      reward.signature = await signGrain(reward);
+      await db.grains.add(reward);
+      sbUpsertGrain(reward);
+      spawnParticles(rarity);
+      toast(`🌾 Lavoura #${lavNum} colhida! Você foi o top! Recompensa: ${RARITY[rarity].emoji} ${id}`,'success',8000);
+    } else {
+      toast(`🌾 Lavoura #${lavNum} colhida! Top contribuidor: ${data.top_name}`,'info',5000);
+    }
+    await loadLavoura();
+  }catch(e){}
 }
 
 async function syncLocalGrains(userId){
@@ -667,6 +745,21 @@ async function pageMine(){
       }).join('')}
       ${off>0?`<div class="text-[10px] text-yellow-700 mt-2">⚠ Dificuldade +${off} pela rede crescente</div>`:''}
     </div>
+
+    ${S.lavoura?`<div class="bg-gray-900 rounded-lg p-4 mb-4 border border-green-900/40">
+      <div class="flex items-center justify-between mb-2">
+        <div class="text-[10px] text-green-400 font-bold uppercase tracking-wide">🌾 Lavoura #${S.lavoura.number} — Ativa</div>
+        <div class="text-[10px] text-gray-400">${RARITY[lavouraRewardRarity(S.lavoura.number)].emoji} Recompensa: ${RARITY[lavouraRewardRarity(S.lavoura.number)].label}</div>
+      </div>
+      <div class="bg-gray-800 rounded-full h-3 overflow-hidden mb-2">
+        <div class="h-full rounded-full transition-all" style="width:${Math.min(100,(S.lavoura.grains_count/S.lavoura.capacity)*100).toFixed(2)}%;background:linear-gradient(90deg,#16a34a,#4ade80)"></div>
+      </div>
+      <div class="flex justify-between text-[10px] text-gray-500 mb-1">
+        <span>${Number(S.lavoura.grains_count).toLocaleString('pt-BR')} Grãos minerados</span>
+        <span>${Number(S.lavoura.capacity).toLocaleString('pt-BR')} total</span>
+      </div>
+      ${S.myContrib>0?`<div class="text-[10px] text-cyan-400">Sua contribuição: ${S.myContrib} Grão${S.myContrib!==1?'s':''}</div>`:''}
+    </div>`:''}
 
     ${sorted.length>0?`<div class="bg-gray-900 rounded-lg p-4 mb-4">
       <div class="text-[10px] text-gray-500 mb-2 font-bold uppercase tracking-wide">Seus Grãos (${sorted.length})</div>
@@ -967,6 +1060,7 @@ async function init(){
       syncLocalGrains(S.user.id);
     }
   }
+  await loadLavoura();
   await render();
   if(S.user) initPeer();
 
