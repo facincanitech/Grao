@@ -7,6 +7,7 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/dexie@3/dist/dexie.js"></script>
   <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
   <style>
@@ -52,6 +53,39 @@ const CFG = {
   CHUNK_SIZE: 800,
   PEER_CFG: { host:'0.peerjs.com', port:443, secure:true, path:'/' }
 };
+
+// ═══════════════════════════════════════════════════════
+// SUPABASE
+// ═══════════════════════════════════════════════════════
+const SB_URL = 'https://smrmnndnnpycmezauymk.supabase.co';
+const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNtcm1ubmRubnB5Y21lemF1eW1rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY3MDI1NDUsImV4cCI6MjA5MjI3ODU0NX0.V5JcuUVTrbUFiDf71B1FMC2aOr1SXK029pAKex_1A88';
+const sb = window.supabase.createClient(SB_URL, SB_KEY);
+
+async function sbUpsertGrain(grain){
+  const row = { id:grain.id, rarity:grain.rarity, hash:grain.hash, nonce:grain.nonce,
+    generated_at:grain.generated_at, discord_user:grain.discord_user, discord_id:grain.discord_id,
+    network_size_at_generation:grain.network_size_at_generation, owner:grain.owner,
+    signature:grain.signature, transfer_history:grain.transfer_history||[] };
+  const { error } = await sb.from('grains').upsert(row);
+  if(error) console.warn('sb grain upsert:', error.message);
+}
+
+async function sbUpsertUser(user){
+  const { error } = await sb.from('users').upsert({
+    discord_id: user.id,
+    username: user.global_name || user.username || user.id,
+    last_seen: Date.now()
+  });
+  if(error) console.warn('sb user upsert:', error.message);
+}
+
+async function updateNetworkSize(){
+  try{
+    const { count } = await sb.from('users').select('*',{ count:'exact', head:true });
+    if(count) S.networkSize = Math.max(1, count);
+    updateHeader();
+  }catch(e){}
+}
 
 // ═══════════════════════════════════════════════════════
 // RARIDADES
@@ -125,6 +159,14 @@ function rarityForZeros(z){
 // ═══════════════════════════════════════════════════════
 async function nextId(rarity){
   const pfx = RARITY[rarity].prefix;
+  try{
+    const { data, error } = await sb.rpc('increment_counter', { r: rarity });
+    if(!error && data){
+      await db.counters.put({ rarity, count: data });
+      return `grão#${pfx}${String(data).padStart(2,'0')}`;
+    }
+  }catch(e){}
+  // fallback offline
   const rec = await db.counters.get(rarity);
   const n   = (rec?.count || 0) + 1;
   await db.counters.put({ rarity, count: n });
@@ -211,6 +253,7 @@ async function finishMining(hash, rarity, nonce){
   grain.signature = await signGrain(grain);
   await db.grains.add(grain);
   await db.settings.put({ key:'lastMine', value: Date.now() });
+  sbUpsertGrain(grain); // fire & forget
 
   S.mining = false;
   S.miningProgress = 100;
@@ -254,6 +297,8 @@ function loginWithDiscord(){
     S.user = { id:'demo_'+Date.now(), username:'DemoUser', global_name:'Demo User', discriminator:'0', avatar:null };
     db.settings.put({ key:'discordUser', value: S.user });
     toast('Modo demo ativado! Configure DISCORD_CLIENT_ID para login real.','info',6000);
+    sbUpsertUser(S.user);
+    updateNetworkSize();
     render();
     initPeer();
     return;
@@ -279,6 +324,10 @@ async function handleDiscordCallback(){
     await db.settings.put({ key:'discordUser', value: user });
     history.replaceState(null,'', window.location.pathname);
     toast(`Bem-vindo, ${user.global_name||user.username}!`,'success');
+    sbUpsertUser(user);
+    updateNetworkSize();
+    // sincroniza grãos locais que ainda não foram ao Supabase
+    syncLocalGrains(user.id);
     return true;
   }catch(e){
     toast('Erro ao autenticar com Discord','error');
@@ -338,6 +387,7 @@ async function receivePkg(json){
   else         { await db.grains.add(updated) }
 
   await db.transfers.add({ grainId:pkg.grain.id, from_user:pkg.from, to_user:S.user.id, timestamp:pkg.timestamp });
+  sbUpsertGrain(updated); // sincroniza novo dono no Supabase
   toast(`${pkg.grain.id} recebido de ${pkg.from_username}!`,'success',5000);
   render();
   return true;
@@ -394,6 +444,13 @@ function syncNetwork(){ updateNetSize() }
 function updateHeader(){
   const el = document.getElementById('net-size');
   if(el) el.textContent = `${S.networkSize} nó${S.networkSize!==1?'s':''}`;
+}
+
+async function syncLocalGrains(userId){
+  try{
+    const local = await db.grains.where('owner').equals(userId).toArray();
+    for(const g of local) await sbUpsertGrain(g);
+  }catch(e){}
 }
 
 // ═══════════════════════════════════════════════════════
@@ -673,7 +730,14 @@ async function pageTransfer(){
 }
 
 async function pageRanking(){
-  const all = await db.grains.toArray();
+  let all = [];
+  let source = 'local';
+  try{
+    const { data, error } = await sb.from('grains').select('id,rarity,owner,discord_user,discord_id');
+    if(!error && data?.length){ all = data; source = 'global'; }
+  }catch(e){}
+  if(!all.length) all = await db.grains.toArray();
+
   const map = {};
   for(const g of all){
     const uid = g.owner || g.discord_id || 'unknown';
@@ -684,22 +748,23 @@ async function pageRanking(){
   const users = Object.entries(map).sort((a,b)=>score(b[1])-score(a[1]));
   return `<div class="p-4 sm:p-6 max-w-3xl mx-auto">
     <h2 class="text-2xl font-bold mb-1">🏆 Ranking</h2>
-    <p class="text-gray-400 text-sm mb-5">Top holders — baseado nos grãos no seu inventário local.</p>
+    <p class="text-gray-400 text-sm mb-2">Top holders de toda a rede GrãoNet.</p>
+    <div class="text-[10px] text-gray-600 mb-4">${source==='global'?`✅ Dados globais · ${all.length} grão(s) · ${users.length} jogador(es)`:'⚠️ Dados locais (offline)'}</div>
     <div class="bg-gray-900 rounded-lg overflow-hidden">
       <div class="grid grid-cols-8 gap-1 px-4 py-2 text-[10px] text-gray-600 border-b border-gray-800">
         <div class="col-span-3">Usuário</div>
         ${ORDER.map(r=>`<div class="text-center">${RARITY[r].emoji}</div>`).join('')}
         <div class="text-right">Pts</div>
       </div>
-      ${users.length===0?`<div class="text-center py-8 text-gray-600 text-sm">Sem dados</div>`
+      ${users.length===0?`<div class="text-center py-8 text-gray-600 text-sm">Nenhum grão minerado ainda</div>`
         :users.slice(0,50).map(([uid,d],i)=>{
           const sc  = score(d);
           const me  = uid===S.user?.id;
-          const med = i===0?'🥇':i===1?'🥈':i===2?'🥉':`${i+1}`;
+          const med = i===0?'🥇':i===1?'🥈':i===2?'🥉':`#${i+1}`;
           return `<div class="grid grid-cols-8 gap-1 px-4 py-2 text-xs border-b border-gray-800 hover:bg-gray-800/50 transition-colors ${me?'bg-gray-800/30':''}">
             <div class="col-span-3 flex items-center gap-1 min-w-0">
-              <span>${med}</span>
-              <span class="${me?'text-cyan-400':'text-gray-300'} truncate text-[11px]">${d.name}</span>
+              <span class="shrink-0">${med}</span>
+              <span class="${me?'text-cyan-400 font-bold':'text-gray-300'} truncate text-[11px]">${d.name}</span>
             </div>
             ${ORDER.map(r=>`<div class="text-center" style="color:${RARITY[r].color}">${d.counts[r]||'–'}</div>`).join('')}
             <div class="text-right text-yellow-400 font-bold">${sc.toLocaleString()}</div>
@@ -866,7 +931,12 @@ async function init(){
   const fromDiscord = await handleDiscordCallback();
   if(!fromDiscord){
     const saved = await db.settings.get('discordUser');
-    if(saved?.value) S.user = saved.value;
+    if(saved?.value){
+      S.user = saved.value;
+      sbUpsertUser(S.user);
+      updateNetworkSize();
+      syncLocalGrains(S.user.id);
+    }
   }
   await render();
   if(S.user) initPeer();
