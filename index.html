@@ -1,0 +1,853 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GrãoNet – Mineração de Grãos</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/dexie@3/dist/dexie.js"></script>
+  <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    *{font-family:'JetBrains Mono',monospace}
+    :root{--brass:#CD7F32;--copper:#B87333;--silver:#C0C0C0;--gold:#FFD700;--diamond:#00FFFF}
+    .card-brass{background:linear-gradient(135deg,#1a1208,#251a0e);border:1px solid #CD7F32}
+    .card-copper{background:linear-gradient(135deg,#1a1008,#25180d);border:1px solid #B87333}
+    .card-silver{background:linear-gradient(135deg,#111318,#1c2028);border:1px solid #C0C0C0}
+    .card-gold{background:linear-gradient(135deg,#1a1500,#2a2200);border:1px solid #FFD700}
+    .card-diamond{background:linear-gradient(135deg,#001a1a,#002828);border:1px solid #00FFFF;animation:diamondGlow 2.5s ease-in-out infinite}
+    @keyframes diamondGlow{0%,100%{box-shadow:0 0 6px #00FFFF50,0 0 12px #00FFFF20}50%{box-shadow:0 0 20px #00FFFFa0,0 0 40px #00FFFF50,0 0 70px #00FFFF20}}
+    @keyframes miningPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.08)}}
+    .mining-active{animation:miningPulse 0.6s ease-in-out infinite}
+    @keyframes particleOut{0%{transform:translate(0,0) scale(1);opacity:1}100%{transform:translate(var(--dx),var(--dy)) scale(0);opacity:0}}
+    .particle{position:absolute;width:5px;height:5px;border-radius:50%;pointer-events:none;animation:particleOut 1s ease-out forwards}
+    .shine-effect{position:relative;overflow:hidden}
+    .shine-effect::after{content:'';position:absolute;top:-100%;left:-100%;width:300%;height:300%;background:linear-gradient(45deg,transparent 35%,rgba(255,255,255,0.08) 50%,transparent 65%);animation:shine 4s ease-in-out infinite}
+    @keyframes shine{0%,100%{transform:translate(-100%,-100%)}60%,100%{transform:translate(100%,100%)}}
+    .badge-first{background:linear-gradient(135deg,#FFD700,#FF6B35);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+    .scrollbar-thin::-webkit-scrollbar{width:4px}
+    .scrollbar-thin::-webkit-scrollbar-track{background:#111}
+    .scrollbar-thin::-webkit-scrollbar-thumb{background:#444;border-radius:2px}
+    .progress-bar{transition:width 0.3s ease}
+    @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+    .fade-in{animation:fadeIn 0.3s ease forwards}
+    select,input,textarea{color-scheme:dark}
+  </style>
+</head>
+<body class="bg-gray-950 text-gray-100 min-h-screen">
+
+<div id="app" class="max-w-6xl mx-auto"></div>
+<div id="toasts" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"></div>
+<div id="particles" class="fixed inset-0 pointer-events-none z-40 overflow-hidden"></div>
+
+<script>
+// ═══════════════════════════════════════════════════════
+// CONFIG — edite DISCORD_CLIENT_ID para seu app Discord
+// ═══════════════════════════════════════════════════════
+const CFG = {
+  DISCORD_CLIENT_ID: 'YOUR_DISCORD_CLIENT_ID_HERE',
+  get REDIRECT_URI(){ return window.location.origin + window.location.pathname },
+  COOLDOWN_MS: 60 * 60 * 1000,
+  CHUNK_SIZE: 800,
+  PEER_CFG: { host:'0.peerjs.com', port:443, secure:true, path:'/' }
+};
+
+// ═══════════════════════════════════════════════════════
+// RARIDADES
+// ═══════════════════════════════════════════════════════
+const RARITY = {
+  brass:   { key:'brass',   label:'Latão',    emoji:'🔶', color:'#CD7F32', zeros:1, prefix:'L' },
+  copper:  { key:'copper',  label:'Cobre',    emoji:'🟤', color:'#B87333', zeros:2, prefix:'C' },
+  silver:  { key:'silver',  label:'Prata',    emoji:'⚪', color:'#C0C0C0', zeros:3, prefix:'S' },
+  gold:    { key:'gold',    label:'Ouro',     emoji:'🟡', color:'#FFD700', zeros:4, prefix:'G' },
+  diamond: { key:'diamond', label:'Diamante', emoji:'💎', color:'#00FFFF', zeros:5, prefix:'D' }
+};
+const ORDER = ['diamond','gold','silver','copper','brass'];
+
+// ═══════════════════════════════════════════════════════
+// DATABASE (Dexie / IndexedDB)
+// ═══════════════════════════════════════════════════════
+const db = new Dexie('GraoNet_v1');
+db.version(1).stores({
+  grains:    '++localId, id, rarity, owner, generated_at',
+  counters:  'rarity',
+  transfers: '++id, grainId, from_user, to_user, timestamp',
+  settings:  'key'
+});
+
+// ═══════════════════════════════════════════════════════
+// ESTADO GLOBAL
+// ═══════════════════════════════════════════════════════
+const S = {
+  user: null,
+  page: 'inventory',
+  params: {},
+  filter: 'all',
+  mining: false,
+  miningProgress: 0,
+  hashrate: 0,
+  miningCancelled: false,
+  networkSize: 1,
+  peers: new Map(),
+  peerId: null,
+  transferTarget: ''
+};
+
+// ═══════════════════════════════════════════════════════
+// CRIPTO
+// ═══════════════════════════════════════════════════════
+async function sha256(msg) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(msg));
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+function leadingZeros(h){ let n=0; for(const c of h){if(c==='0')n++;else break} return n }
+
+// ═══════════════════════════════════════════════════════
+// DIFICULDADE
+// ═══════════════════════════════════════════════════════
+function diffOffset(){ return Math.floor(S.networkSize / 50) }
+function minZeros(){ return 1 + diffOffset() }
+function rarityForZeros(z){
+  const o = diffOffset();
+  if(z >= 5+o) return 'diamond';
+  if(z >= 4+o) return 'gold';
+  if(z >= 3+o) return 'silver';
+  if(z >= 2+o) return 'copper';
+  if(z >= 1+o) return 'brass';
+  return null;
+}
+
+// ═══════════════════════════════════════════════════════
+// IDs DOS GRÃOS
+// ═══════════════════════════════════════════════════════
+async function nextId(rarity){
+  const pfx = RARITY[rarity].prefix;
+  const rec = await db.counters.get(rarity);
+  const n   = (rec?.count || 0) + 1;
+  await db.counters.put({ rarity, count: n });
+  return `grão#${pfx}${String(n).padStart(2,'0')}`;
+}
+
+// ═══════════════════════════════════════════════════════
+// ASSINATURA
+// ═══════════════════════════════════════════════════════
+async function signGrain(g){
+  return sha256(`${g.id}${g.hash}${g.discord_id}${g.generated_at}`);
+}
+async function verifyGrain(g){
+  return g.signature === await signGrain(g);
+}
+
+// ═══════════════════════════════════════════════════════
+// MINERAÇÃO
+// ═══════════════════════════════════════════════════════
+async function startMining(){
+  if(!S.user){ toast('Faça login primeiro!','error'); return }
+  if(S.mining) return;
+
+  const lastMine = await db.settings.get('lastMine');
+  if(lastMine){
+    const elapsed = Date.now() - lastMine.value;
+    if(elapsed < CFG.COOLDOWN_MS){
+      const mins = Math.ceil((CFG.COOLDOWN_MS - elapsed)/60000);
+      toast(`Cooldown: ${mins} minuto(s) restante(s)`,'warning');
+      return;
+    }
+  }
+
+  S.mining = true;
+  S.miningCancelled = false;
+  S.miningProgress = 0;
+  S.hashrate = 0;
+  render();
+
+  const base      = `${S.user.id}:${Date.now()}`;
+  let nonce       = 0;
+  let start       = Date.now();
+  let found       = null;
+  let foundHash   = '';
+
+  const tick = async () => {
+    if(S.miningCancelled){ S.mining=false; render(); return }
+
+    for(let i=0;i<CFG.CHUNK_SIZE;i++){
+      if(S.miningCancelled) break;
+      const h = await sha256(`${base}:${nonce}`);
+      const z = leadingZeros(h);
+      const r = rarityForZeros(z);
+      if(r){ found=r; foundHash=h; break }
+      nonce++;
+    }
+
+    const secs = (Date.now()-start)/1000;
+    S.hashrate  = Math.round(nonce/Math.max(secs,0.001));
+    S.miningProgress = Math.min(94, (nonce/100000)*100);
+
+    if(found){
+      await finishMining(foundHash, found, nonce);
+    } else {
+      render();
+      setTimeout(tick, 0);
+    }
+  };
+  setTimeout(tick, 0);
+}
+
+async function finishMining(hash, rarity, nonce){
+  const id   = await nextId(rarity);
+  const user = S.user;
+  const grain = {
+    id, rarity, hash, nonce,
+    generated_at: Date.now(),
+    discord_user: user.global_name || user.username || user.id,
+    discord_id: user.id,
+    network_size_at_generation: S.networkSize,
+    owner: user.id,
+    transfer_history: []
+  };
+  grain.signature = await signGrain(grain);
+  await db.grains.add(grain);
+  await db.settings.put({ key:'lastMine', value: Date.now() });
+
+  S.mining = false;
+  S.miningProgress = 100;
+  spawnParticles(rarity);
+  broadcastGrain(grain);
+  toast(`🎉 ${id} minerado! (${RARITY[rarity].label})`,'success',5000);
+  setTimeout(()=>{ S.miningProgress=0; render() }, 2500);
+  render();
+}
+
+function cancelMining(){ S.miningCancelled = true }
+
+// ═══════════════════════════════════════════════════════
+// PARTÍCULAS
+// ═══════════════════════════════════════════════════════
+function spawnParticles(rarity){
+  const c   = document.getElementById('particles');
+  if(!c) return;
+  const col = RARITY[rarity]?.color || '#fff';
+  const num = rarity==='diamond'?60 : rarity==='gold'?40 : 25;
+  for(let i=0;i<num;i++){
+    const p = document.createElement('div');
+    p.className='particle';
+    const ang = Math.random()*Math.PI*2;
+    const dist = 80 + Math.random()*200;
+    p.style.cssText=`background:${col};left:50%;top:50%;
+      --dx:${Math.cos(ang)*dist}px;--dy:${Math.sin(ang)*dist}px;
+      animation-delay:${Math.random()*0.4}s;
+      box-shadow:0 0 4px ${col};`;
+    c.appendChild(p);
+    setTimeout(()=>p.remove(), 1600);
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+// DISCORD AUTH
+// ═══════════════════════════════════════════════════════
+function loginWithDiscord(){
+  if(CFG.DISCORD_CLIENT_ID === 'YOUR_DISCORD_CLIENT_ID_HERE'){
+    // Demo mode
+    S.user = { id:'demo_'+Date.now(), username:'DemoUser', global_name:'Demo User', discriminator:'0', avatar:null };
+    db.settings.put({ key:'discordUser', value: S.user });
+    toast('Modo demo ativado! Configure DISCORD_CLIENT_ID para login real.','info',6000);
+    render();
+    initPeer();
+    return;
+  }
+  const url = `https://discord.com/api/oauth2/authorize`+
+    `?client_id=${CFG.DISCORD_CLIENT_ID}`+
+    `&redirect_uri=${encodeURIComponent(CFG.REDIRECT_URI)}`+
+    `&response_type=token&scope=identify`;
+  window.location.href = url;
+}
+
+async function handleDiscordCallback(){
+  const hash = window.location.hash;
+  if(!hash || !hash.includes('access_token')) return false;
+  const p = new URLSearchParams(hash.slice(1));
+  const tk = p.get('access_token');
+  if(!tk) return false;
+  try{
+    const res  = await fetch('https://discord.com/api/users/@me',{ headers:{ Authorization:`Bearer ${tk}` }});
+    const user = await res.json();
+    if(!user.id) throw new Error('bad response');
+    S.user = user;
+    await db.settings.put({ key:'discordUser', value: user });
+    history.replaceState(null,'', window.location.pathname);
+    toast(`Bem-vindo, ${user.global_name||user.username}!`,'success');
+    return true;
+  }catch(e){
+    toast('Erro ao autenticar com Discord','error');
+    return false;
+  }
+}
+
+function logout(){
+  S.user = null;
+  if(window._peer) try{ window._peer.destroy() }catch(e){}
+  db.settings.delete('discordUser');
+  render();
+}
+
+// ═══════════════════════════════════════════════════════
+// TRANSFERÊNCIA P2P
+// ═══════════════════════════════════════════════════════
+async function generateTransferPkg(grainId, targetId){
+  const g = await db.grains.where('id').equals(grainId).first();
+  if(!g){ toast('Grão não encontrado','error'); return null }
+  if(g.owner !== S.user.id){ toast('Você não é o dono','error'); return null }
+
+  const pkg = {
+    type: 'graonet_transfer', version:'1.0',
+    grain: { ...g },
+    from: S.user.id,
+    from_username: g.discord_user,
+    to: targetId,
+    timestamp: Date.now(),
+    nonce: crypto.randomUUID()
+  };
+  const raw = `${g.id}:${pkg.from}:${pkg.to}:${pkg.timestamp}:${pkg.nonce}`;
+  pkg.sig = await sha256(raw);
+  return JSON.stringify(pkg, null, 2);
+}
+
+async function receivePkg(json){
+  let pkg;
+  try{ pkg = JSON.parse(json) }
+  catch(e){ toast('JSON inválido','error'); return false }
+  if(pkg.type !== 'graonet_transfer'){ toast('Tipo inválido','error'); return false }
+  if(!S.user || pkg.to !== S.user.id){ toast('Este pacote não é para você','error'); return false }
+
+  const raw  = `${pkg.grain.id}:${pkg.from}:${pkg.to}:${pkg.timestamp}:${pkg.nonce}`;
+  const exp  = await sha256(raw);
+  if(pkg.sig !== exp){ toast('Assinatura inválida!','error'); return false }
+
+  const existing = await db.grains.where('id').equals(pkg.grain.id).first();
+  const updated  = {
+    ...pkg.grain,
+    owner: S.user.id,
+    transfer_history: [...(pkg.grain.transfer_history||[]), {
+      from: pkg.from_username, to: S.user.id, timestamp: pkg.timestamp
+    }]
+  };
+  if(existing){ await db.grains.where('id').equals(pkg.grain.id).modify(updated) }
+  else         { await db.grains.add(updated) }
+
+  await db.transfers.add({ grainId:pkg.grain.id, from_user:pkg.from, to_user:S.user.id, timestamp:pkg.timestamp });
+  toast(`${pkg.grain.id} recebido de ${pkg.from_username}!`,'success',5000);
+  render();
+  return true;
+}
+
+// ═══════════════════════════════════════════════════════
+// REDE P2P (PeerJS)
+// ═══════════════════════════════════════════════════════
+function initPeer(){
+  if(!S.user || window._peer) return;
+  const pid = `graonet-${S.user.id}`.replace(/[^a-zA-Z0-9\-_]/g,'_');
+  try{
+    const peer = new Peer(pid, CFG.PEER_CFG);
+    window._peer = peer;
+    peer.on('open', id =>{ S.peerId=id; syncNetwork(); updateHeader() });
+    peer.on('connection', conn => setupConn(conn));
+    peer.on('error', ()=>{});
+  }catch(e){}
+}
+
+function setupConn(conn){
+  conn.on('open',()=>{
+    S.peers.set(conn.peer, conn);
+    S.networkSize = Math.max(S.networkSize, S.peers.size+1);
+    conn.send({ type:'hello', userId: S.user?.id });
+    updateHeader();
+  });
+  conn.on('data', d => handlePeerData(conn, d));
+  conn.on('close',()=>{ S.peers.delete(conn.peer); updateNetSize(); updateHeader() });
+}
+
+async function handlePeerData(conn, d){
+  if(d.type==='hello'){
+    const ctrs = await db.counters.toArray();
+    conn.send({ type:'counters', data: ctrs });
+    S.networkSize = Math.max(S.networkSize, S.peers.size+1);
+  }
+  if(d.type==='counters'){
+    for(const c of d.data||[]){
+      const loc = await db.counters.get(c.rarity);
+      if(!loc || c.count > loc.count) await db.counters.put(c);
+    }
+  }
+  if(d.type==='new_grain') S.networkSize = Math.max(S.networkSize, d.net||1);
+}
+
+function broadcastGrain(g){
+  for(const [,c] of S.peers){
+    try{ c.send({ type:'new_grain', rarity:g.rarity, net: S.networkSize }) }catch(e){}
+  }
+}
+function updateNetSize(){ S.networkSize = Math.max(1, S.peers.size+1) }
+function syncNetwork(){ updateNetSize() }
+function updateHeader(){
+  const el = document.getElementById('net-size');
+  if(el) el.textContent = `${S.networkSize} nó${S.networkSize!==1?'s':''}`;
+}
+
+// ═══════════════════════════════════════════════════════
+// EXPORT / IMPORT
+// ═══════════════════════════════════════════════════════
+async function exportBackup(){
+  const grains   = await db.grains.where('owner').equals(S.user.id).toArray();
+  const counters = await db.counters.toArray();
+  const data = JSON.stringify({ type:'graonet_backup', version:'1.0', user:S.user, exported_at:Date.now(), grains, counters }, null, 2);
+  const a = Object.assign(document.createElement('a'),{
+    href: URL.createObjectURL(new Blob([data],{type:'application/json'})),
+    download: `graonet-backup-${Date.now()}.json`
+  });
+  a.click();
+  toast('Backup exportado!','success');
+}
+
+async function importBackup(file){
+  if(!file) return;
+  let bk;
+  try{ bk = JSON.parse(await file.text()) }
+  catch(e){ toast('Arquivo inválido','error'); return }
+  if(bk.type !== 'graonet_backup'){ toast('Formato inválido','error'); return }
+  let added=0;
+  for(const g of bk.grains||[]){
+    const ex = await db.grains.where('id').equals(g.id).first();
+    if(!ex){ await db.grains.add(g); added++ }
+  }
+  for(const c of bk.counters||[]){
+    const loc = await db.counters.get(c.rarity);
+    if(!loc || c.count > loc.count) await db.counters.put(c);
+  }
+  toast(`Importado! ${added} grão(s) novo(s) adicionado(s)`,'success',5000);
+  render();
+}
+
+// ═══════════════════════════════════════════════════════
+// TOASTS
+// ═══════════════════════════════════════════════════════
+function toast(msg, type='info', dur=3000){
+  const c = document.getElementById('toasts'); if(!c) return;
+  const cls = { success:'bg-green-900 border-green-600 text-green-100', error:'bg-red-900 border-red-600 text-red-100',
+    warning:'bg-yellow-900 border-yellow-600 text-yellow-100', info:'bg-blue-900 border-blue-600 text-blue-100' };
+  const el = document.createElement('div');
+  el.className=`px-4 py-2 rounded border text-sm pointer-events-auto shadow-lg ${cls[type]||cls.info}`;
+  el.style.animation='fadeIn 0.2s ease forwards';
+  el.textContent=msg;
+  c.appendChild(el);
+  setTimeout(()=>{ el.style.opacity='0'; el.style.transition='opacity 0.3s'; setTimeout(()=>el.remove(),300) }, dur);
+}
+
+// ═══════════════════════════════════════════════════════
+// NAV
+// ═══════════════════════════════════════════════════════
+function go(page, params={}){ S.page=page; S.params=params; render(); window.scrollTo(0,0) }
+
+// ═══════════════════════════════════════════════════════
+// HEADER
+// ═══════════════════════════════════════════════════════
+function renderHeader(){
+  const u  = S.user;
+  const av = u?.avatar ? `https://cdn.discordapp.com/avatars/${u.id}/${u.avatar}.png?size=64` : null;
+  const nm = u ? (u.global_name || u.username || 'Usuário') : null;
+  const nb = (id,lbl) => `<button onclick="go('${id}')" class="px-3 py-1 rounded text-sm transition-colors ${S.page===id?'bg-gray-800 text-white':'text-gray-400 hover:text-white hover:bg-gray-900'}">${lbl}</button>`;
+  return `
+  <header class="sticky top-0 z-30 bg-gray-950/95 backdrop-blur border-b border-gray-800 px-4 py-3 flex items-center justify-between gap-4">
+    <div class="flex items-center gap-3 min-w-0">
+      <button onclick="go('inventory')" class="text-xl font-bold whitespace-nowrap" style="color:#00FFFF">🌾 GrãoNet</button>
+      ${u?`<nav class="hidden sm:flex gap-1">
+        ${nb('inventory','📦 Inventário')}${nb('mine','⛏️ Minerar')}${nb('transfer','🔄 Transferir')}${nb('ranking','🏆 Ranking')}
+      </nav>`:''}
+    </div>
+    <div class="flex items-center gap-2 text-sm shrink-0">
+      ${u?`
+        ${av?`<img src="${av}" class="w-7 h-7 rounded-full border border-gray-700 shrink-0">`:''}
+        <span class="text-gray-300 hidden sm:inline truncate max-w-[120px]">${nm}</span>
+        <span class="text-xs text-gray-600">|</span>
+        <span class="text-xs text-gray-500" id="net-size">${S.networkSize} nó${S.networkSize!==1?'s':''}</span>
+        <button onclick="logout()" class="text-xs text-gray-600 hover:text-red-400 transition-colors ml-1">Sair</button>
+      `:`<button onclick="loginWithDiscord()" class="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 px-4 py-2 rounded text-sm font-medium transition-colors">
+        <svg width="16" height="16" viewBox="0 0 71 55" fill="currentColor"><path d="M60.1 4.9A58.5 58.5 0 0 0 45.6.6a.2.2 0 0 0-.2.1 40.8 40.8 0 0 0-1.8 3.7 54 54 0 0 0-16.2 0A37.2 37.2 0 0 0 25.6.7a.2.2 0 0 0-.2-.1A58.4 58.4 0 0 0 10.9 4.9a.2.2 0 0 0-.1.1C1.6 18.7-.9 32.2.3 45.4a.2.2 0 0 0 .1.2 58.8 58.8 0 0 0 17.7 8.9.2.2 0 0 0 .2-.1 42 42 0 0 0 3.6-5.9.2.2 0 0 0-.1-.3 38.7 38.7 0 0 1-5.5-2.6.2.2 0 0 1 0-.4l1.1-.8a.2.2 0 0 1 .2 0c11.5 5.3 24 5.3 35.4 0a.2.2 0 0 1 .2 0l1.1.8a.2.2 0 0 1 0 .4 36.1 36.1 0 0 1-5.5 2.6.2.2 0 0 0-.1.3 47.1 47.1 0 0 0 3.6 5.9.2.2 0 0 0 .2.1 58.7 58.7 0 0 0 17.7-8.9.2.2 0 0 0 .1-.2c1.5-15.3-2.5-28.6-10.6-40.4a.2.2 0 0 0-.1-.1ZM23.7 37.3c-3.5 0-6.4-3.2-6.4-7.1s2.8-7.1 6.4-7.1c3.6 0 6.4 3.2 6.4 7.1 0 3.9-2.9 7.1-6.4 7.1Zm23.6 0c-3.5 0-6.4-3.2-6.4-7.1s2.8-7.1 6.4-7.1c3.6 0 6.5 3.2 6.5 7.1 0 3.9-2.9 7.1-6.5 7.1Z"/></svg>
+        Discord
+      </button>`}
+    </div>
+  </header>
+  ${u?`<nav class="sm:hidden flex gap-1 px-4 py-2 bg-gray-950 border-b border-gray-900">
+    ${nb('inventory','📦')}${nb('mine','⛏️')}${nb('transfer','🔄')}${nb('ranking','🏆')}
+  </nav>`:''}`;
+}
+
+// ═══════════════════════════════════════════════════════
+// CARD DE GRÃO
+// ═══════════════════════════════════════════════════════
+function grainCard(g, compact=false){
+  const r     = RARITY[g.rarity];
+  const first = /[A-Z]0*1$/.test(g.id);
+  const dt    = new Date(g.generated_at).toLocaleDateString('pt-BR');
+  return `<div class="card-${g.rarity} rounded-lg p-3 cursor-pointer hover:scale-[1.03] transition-transform ${g.rarity==='diamond'?'shine-effect':''} fade-in"
+    onclick="go('grain',{id:'${g.id}'})" title="${g.id}">
+    <div class="flex items-center justify-between mb-1">
+      <span class="text-xl">${r.emoji}</span>
+      ${first?`<span class="text-[10px] font-bold badge-first">★ 1º</span>`:''}
+      <span class="text-[10px] text-gray-500 ml-auto">${dt}</span>
+    </div>
+    <div class="font-bold text-xs font-mono" style="color:${r.color}">${g.id}</div>
+    <div class="text-[10px] text-gray-400">${r.label}</div>
+    ${!compact?`<div class="text-[9px] text-gray-600 mt-1 truncate">${g.hash.slice(0,18)}…</div>`:''}
+  </div>`;
+}
+
+// ═══════════════════════════════════════════════════════
+// PÁGINAS
+// ═══════════════════════════════════════════════════════
+async function pageInventory(){
+  if(!S.user) return pageLogin();
+  const all      = await db.grains.where('owner').equals(S.user.id).toArray();
+  const filtered = S.filter==='all' ? all : all.filter(g=>g.rarity===S.filter);
+  const counts   = {};
+  for(const r of ORDER) counts[r] = all.filter(g=>g.rarity===r).length;
+
+  const sorted = filtered.sort((a,b)=>{
+    const d = ORDER.indexOf(a.rarity)-ORDER.indexOf(b.rarity);
+    return d||a.generated_at-b.generated_at;
+  });
+
+  return `<div class="p-4 sm:p-6">
+    <div class="flex flex-wrap gap-2 mb-4">
+      ${ORDER.map(r=>`<div class="flex items-center gap-1 bg-gray-900 px-3 py-1 rounded-full text-xs">
+        <span>${RARITY[r].emoji}</span>
+        <span style="color:${RARITY[r].color}">${RARITY[r].label}</span>
+        <span class="text-gray-400">×${counts[r]}</span>
+      </div>`).join('')}
+    </div>
+    <div class="flex flex-wrap gap-2 mb-5">
+      <button onclick="setFilter('all')" class="px-3 py-1 rounded text-xs transition-colors ${S.filter==='all'?'bg-gray-600 text-white':'bg-gray-900 hover:bg-gray-800 text-gray-400'}">Todos (${all.length})</button>
+      ${ORDER.map(r=>`<button onclick="setFilter('${r}')" class="px-3 py-1 rounded text-xs transition-colors ${S.filter===r?'bg-gray-600':'bg-gray-900 hover:bg-gray-800'}" style="${S.filter===r?`color:${RARITY[r].color}`:''}">
+        ${RARITY[r].emoji} ${RARITY[r].label} (${counts[r]})
+      </button>`).join('')}
+    </div>
+    ${sorted.length===0?`<div class="text-center py-20 text-gray-600">
+      <div class="text-6xl mb-4">🌾</div>
+      <div class="text-lg mb-2">Nenhum grão aqui</div>
+      <button onclick="go('mine')" class="text-cyan-400 hover:underline text-sm">Ir para Mineração →</button>
+    </div>`:`<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">${sorted.map(g=>grainCard(g)).join('')}</div>`}
+    <div class="mt-8 flex flex-wrap gap-3">
+      <button onclick="exportBackup()" class="text-xs bg-gray-800 hover:bg-gray-700 px-4 py-2 rounded transition-colors">📥 Exportar Backup</button>
+      <label class="text-xs bg-gray-800 hover:bg-gray-700 px-4 py-2 rounded cursor-pointer transition-colors">
+        📤 Importar Backup
+        <input type="file" accept=".json" onchange="importBackup(this.files[0])" class="hidden">
+      </label>
+    </div>
+  </div>`;
+}
+
+async function pageMine(){
+  if(!S.user) return pageLogin();
+  const lastMine = await db.settings.get('lastMine');
+  let cd = null;
+  if(lastMine){
+    const el = Date.now()-lastMine.value;
+    if(el < CFG.COOLDOWN_MS){
+      const r = CFG.COOLDOWN_MS-el;
+      cd = `${Math.floor(r/60000)}m ${Math.floor((r%60000)/1000)}s`;
+    }
+  }
+  const off = diffOffset();
+  return `<div class="p-4 sm:p-6 max-w-2xl mx-auto">
+    <h2 class="text-2xl font-bold mb-1">⛏️ Mineração</h2>
+    <p class="text-gray-400 text-sm mb-5">Prova de trabalho no browser para minerar Grãos únicos.</p>
+    <div class="bg-gray-900 rounded-lg p-4 mb-4 grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
+      <div class="text-gray-400 text-xs">Tamanho da rede<br><span class="text-cyan-400 text-base" id="net-size2">${S.networkSize} nó${S.networkSize!==1?'s':''}</span></div>
+      <div class="text-gray-400 text-xs">Offset dificuldade<br><span class="text-yellow-400 text-base">+${off}</span></div>
+      <div class="text-gray-400 text-xs">Zeros mínimos<br><span class="text-orange-400 text-base">${minZeros()}</span></div>
+    </div>
+    <div class="bg-gray-900 rounded-lg p-4 mb-5">
+      <div class="text-xs text-gray-400 mb-3">Tabela de raridade (dificuldade atual)</div>
+      ${ORDER.map(r=>{
+        const z = RARITY[r].zeros+off;
+        return `<div class="flex items-center justify-between text-xs py-1 border-b border-gray-800">
+          <span class="flex items-center gap-2">${RARITY[r].emoji} <span style="color:${RARITY[r].color}">${RARITY[r].label}</span></span>
+          <span class="font-mono text-gray-500">${'0'.repeat(Math.min(z,8))}${z>8?`…(${z})`:''}… </span>
+        </div>`;
+      }).join('')}
+    </div>
+    ${(cd && !S.mining)?`<div class="bg-gray-900 border border-yellow-800/50 rounded-lg p-6 text-center">
+      <div class="text-4xl mb-3">⏳</div>
+      <div class="text-yellow-400 font-bold mb-1">Cooldown Ativo</div>
+      <div class="text-gray-400 text-sm">Próxima mineração em: <span id="cd-timer" class="font-mono text-white">${cd}</span></div>
+    </div>`:`<div class="bg-gray-900 rounded-lg p-6 text-center">
+      ${S.mining?`<div class="text-5xl mb-3 mining-active">⛏️</div>
+        <div class="font-bold mb-4">Minerando...</div>
+        <div class="bg-gray-800 rounded-full h-3 mb-3 overflow-hidden">
+          <div class="h-full rounded-full progress-bar" style="width:${S.miningProgress}%;background:linear-gradient(90deg,#00FFFF,#0080FF)"></div>
+        </div>
+        <div class="text-sm text-gray-400 mb-5">Hashrate: <span class="text-cyan-400">${S.hashrate.toLocaleString()} H/s</span></div>
+        <button onclick="cancelMining()" class="bg-red-900 hover:bg-red-800 px-6 py-2 rounded text-sm transition-colors">✕ Cancelar</button>
+      `:`<div class="text-6xl mb-4">🌾</div>
+        <p class="text-gray-400 text-sm mb-6">Clique para iniciar a prova de trabalho.<br>Mais zeros no hash = Grão mais raro!</p>
+        <button onclick="startMining()" class="bg-cyan-700 hover:bg-cyan-600 px-8 py-3 rounded-lg font-bold text-lg transition-colors">
+          ⛏️ Começar Mineração
+        </button>`}
+    </div>`}
+  </div>`;
+}
+
+async function pageTransfer(){
+  if(!S.user) return pageLogin();
+  const my = await db.grains.where('owner').equals(S.user.id).toArray();
+  const transfers = await db.transfers.where('from_user').equals(S.user.id).or('to_user').equals(S.user.id)
+    .reverse().limit(15).toArray();
+  return `<div class="p-4 sm:p-6 max-w-2xl mx-auto">
+    <h2 class="text-2xl font-bold mb-1">🔄 Transferência P2P</h2>
+    <p class="text-gray-400 text-sm mb-5">Troque Grãos com outros usuários via pacotes JSON assinados.</p>
+    <div class="grid gap-4 md:grid-cols-2 mb-6">
+      <div class="bg-gray-900 rounded-lg p-4">
+        <h3 class="font-bold mb-3 text-cyan-400 text-sm">📤 Enviar Grão</h3>
+        <label class="text-xs text-gray-400 block mb-1">Discord ID do destinatário</label>
+        <input type="text" id="tr-target" placeholder="123456789012345678"
+          class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:border-cyan-500 focus:outline-none mb-3"
+          value="${S.transferTarget}" oninput="S.transferTarget=this.value">
+        <label class="text-xs text-gray-400 block mb-1">Selecionar Grão</label>
+        <select id="tr-grain" class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:border-cyan-500 focus:outline-none mb-3">
+          <option value="">-- Escolha --</option>
+          ${my.map(g=>`<option value="${g.id}">${RARITY[g.rarity].emoji} ${g.id} — ${RARITY[g.rarity].label}</option>`).join('')}
+        </select>
+        <button onclick="doGenerateTransfer()" class="w-full bg-cyan-800 hover:bg-cyan-700 px-4 py-2 rounded text-sm font-medium transition-colors">Gerar Pacote</button>
+        <div id="tr-out" class="mt-3 hidden">
+          <label class="text-xs text-gray-400 block mb-1">Copie e envie ao destinatário:</label>
+          <textarea id="tr-pkg" readonly rows="6" class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-xs font-mono resize-none focus:outline-none"></textarea>
+          <button onclick="copyPkg()" class="mt-2 w-full bg-gray-700 hover:bg-gray-600 px-4 py-1 rounded text-xs transition-colors">📋 Copiar</button>
+        </div>
+      </div>
+      <div class="bg-gray-900 rounded-lg p-4">
+        <h3 class="font-bold mb-3 text-green-400 text-sm">📥 Receber Grão</h3>
+        <label class="text-xs text-gray-400 block mb-1">Cole o pacote de transferência:</label>
+        <textarea id="tr-rcv" rows="10" placeholder='{"type":"graonet_transfer",...}'
+          class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-xs font-mono resize-none focus:border-green-500 focus:outline-none mb-3"></textarea>
+        <button onclick="doReceive()" class="w-full bg-green-900 hover:bg-green-800 px-4 py-2 rounded text-sm font-medium transition-colors">✓ Confirmar Recebimento</button>
+      </div>
+    </div>
+    <div class="bg-gray-900 rounded-lg p-4">
+      <h3 class="font-bold mb-3 text-gray-300 text-sm">Histórico</h3>
+      ${transfers.length===0?`<div class="text-gray-600 text-xs text-center py-3">Nenhuma transferência ainda</div>`
+        :transfers.map(t=>`<div class="flex items-center justify-between text-xs py-2 border-b border-gray-800">
+          <span class="text-gray-500">${new Date(t.timestamp).toLocaleDateString('pt-BR')}</span>
+          <span class="font-mono text-gray-300">${t.grainId}</span>
+          <span class="${t.to_user===S.user.id?'text-green-400':'text-red-400'}">${t.to_user===S.user.id?'📥 Recebido':'📤 Enviado'}</span>
+        </div>`).join('')}
+    </div>
+  </div>`;
+}
+
+async function pageRanking(){
+  const all = await db.grains.toArray();
+  const map = {};
+  for(const g of all){
+    const uid = g.owner || g.discord_id || 'unknown';
+    if(!map[uid]) map[uid] = { name: g.discord_user||uid, counts:{diamond:0,gold:0,silver:0,copper:0,brass:0} };
+    if(g.rarity) map[uid].counts[g.rarity]++;
+  }
+  const score = u => u.counts.diamond*1000+u.counts.gold*100+u.counts.silver*10+u.counts.copper*2+u.counts.brass;
+  const users = Object.entries(map).sort((a,b)=>score(b[1])-score(a[1]));
+  return `<div class="p-4 sm:p-6 max-w-3xl mx-auto">
+    <h2 class="text-2xl font-bold mb-1">🏆 Ranking</h2>
+    <p class="text-gray-400 text-sm mb-5">Top holders — baseado nos grãos no seu inventário local.</p>
+    <div class="bg-gray-900 rounded-lg overflow-hidden">
+      <div class="grid grid-cols-8 gap-1 px-4 py-2 text-[10px] text-gray-600 border-b border-gray-800">
+        <div class="col-span-3">Usuário</div>
+        ${ORDER.map(r=>`<div class="text-center">${RARITY[r].emoji}</div>`).join('')}
+        <div class="text-right">Pts</div>
+      </div>
+      ${users.length===0?`<div class="text-center py-8 text-gray-600 text-sm">Sem dados</div>`
+        :users.slice(0,50).map(([uid,d],i)=>{
+          const sc  = score(d);
+          const me  = uid===S.user?.id;
+          const med = i===0?'🥇':i===1?'🥈':i===2?'🥉':`${i+1}`;
+          return `<div class="grid grid-cols-8 gap-1 px-4 py-2 text-xs border-b border-gray-800 hover:bg-gray-800/50 transition-colors ${me?'bg-gray-800/30':''}">
+            <div class="col-span-3 flex items-center gap-1 min-w-0">
+              <span>${med}</span>
+              <span class="${me?'text-cyan-400':'text-gray-300'} truncate text-[11px]">${d.name}</span>
+            </div>
+            ${ORDER.map(r=>`<div class="text-center" style="color:${RARITY[r].color}">${d.counts[r]||'–'}</div>`).join('')}
+            <div class="text-right text-yellow-400 font-bold">${sc.toLocaleString()}</div>
+          </div>`;
+        }).join('')}
+    </div>
+    <div class="mt-3 text-[10px] text-gray-600 text-center">💎×1000 + 🟡×100 + ⚪×10 + 🟤×2 + 🔶×1</div>
+  </div>`;
+}
+
+async function pageGrain(id){
+  const g = await db.grains.where('id').equals(id).first();
+  if(!g) return `<div class="p-6 text-center">
+    <div class="text-4xl mb-4">❓</div>
+    <div class="text-gray-400 text-sm">${id} não encontrado</div>
+    <button onclick="go('inventory')" class="mt-4 text-cyan-400 hover:underline text-sm">← Voltar</button>
+  </div>`;
+  const r     = RARITY[g.rarity];
+  const first = /[A-Z]0*1$/.test(g.id);
+  const mine  = g.owner === S.user?.id;
+  return `<div class="p-4 sm:p-6 max-w-2xl mx-auto">
+    <button onclick="go('inventory')" class="text-gray-500 hover:text-white text-sm mb-5 flex items-center gap-1 transition-colors">← Inventário</button>
+    <div class="card-${g.rarity} rounded-xl p-6 mb-5 ${g.rarity==='diamond'?'shine-effect':''}">
+      <div class="flex items-start justify-between mb-4">
+        <div>
+          <div class="text-5xl mb-2">${r.emoji}</div>
+          <div class="text-3xl font-bold font-mono" style="color:${r.color}">${g.id}</div>
+          <div style="color:${r.color}">${r.label}</div>
+        </div>
+        ${first?`<div class="text-right">
+          <div class="text-3xl">⭐</div>
+          <div class="text-xs badge-first font-bold mt-1">PRIMEIRO</div>
+        </div>`:''}
+      </div>
+      <div class="grid grid-cols-2 gap-3 mt-3 text-sm">
+        <div><div class="text-gray-500 text-xs">Gerado em</div><div>${new Date(g.generated_at).toLocaleString('pt-BR')}</div></div>
+        <div><div class="text-gray-500 text-xs">Tamanho da rede</div><div>${g.network_size_at_generation} nós</div></div>
+        <div class="col-span-2"><div class="text-gray-500 text-xs">Minerado por</div><div class="font-mono text-sm">${g.discord_user}</div></div>
+      </div>
+    </div>
+    <div class="bg-gray-900 rounded-lg p-4 mb-4">
+      <div class="text-xs text-gray-400 mb-3 font-bold">Dados Técnicos</div>
+      <div class="space-y-2 text-xs font-mono">
+        <div><span class="text-gray-500">Hash: </span><span class="text-gray-300 break-all">${g.hash}</span></div>
+        <div><span class="text-gray-500">Assinatura: </span><span class="text-gray-300 break-all">${g.signature}</span></div>
+        <div><span class="text-gray-500">Nonce: </span><span class="text-gray-300">${(g.nonce||0).toLocaleString()}</span></div>
+      </div>
+    </div>
+    ${(g.transfer_history?.length>0)?`<div class="bg-gray-900 rounded-lg p-4 mb-4">
+      <div class="text-xs text-gray-400 mb-3 font-bold">Cadeia de Custódia</div>
+      <div class="text-xs py-1 border-b border-gray-800 text-gray-300">Origem: ${g.discord_user}</div>
+      ${g.transfer_history.map((t,i)=>`<div class="text-xs py-2 border-b border-gray-800 flex justify-between">
+        <span class="text-gray-400">#${i+1} ${t.from} → ${t.to}</span>
+        <span class="text-gray-600">${new Date(t.timestamp).toLocaleDateString('pt-BR')}</span>
+      </div>`).join('')}
+    </div>`:''}
+    ${mine?`<button onclick="go('transfer');setTimeout(()=>{const s=document.getElementById('tr-grain');if(s)s.value='${g.id}'},80)"
+      class="w-full bg-gray-800 hover:bg-gray-700 px-4 py-3 rounded text-sm transition-colors">
+      🔄 Transferir este Grão
+    </button>`:''}
+  </div>`;
+}
+
+function pageLogin(){
+  return `<div class="min-h-screen flex items-center justify-center p-6">
+    <div class="text-center max-w-md fade-in">
+      <div class="text-8xl mb-5">🌾</div>
+      <h1 class="text-4xl font-bold mb-2" style="color:#00FFFF">GrãoNet</h1>
+      <p class="text-gray-400 mb-1">Sistema de mineração de itens colecionáveis</p>
+      <p class="text-gray-600 text-sm mb-7">Mine • Colecione • Transfira</p>
+      <div class="flex justify-center gap-4 mb-8">
+        ${ORDER.map(r=>`<div class="text-center"><div class="text-3xl">${RARITY[r].emoji}</div><div class="text-[10px] mt-1" style="color:${RARITY[r].color}">${RARITY[r].label}</div></div>`).join('')}
+      </div>
+      <button onclick="loginWithDiscord()" class="flex items-center gap-3 mx-auto bg-indigo-600 hover:bg-indigo-700 px-8 py-4 rounded-xl font-bold text-lg transition-colors shadow-lg">
+        <svg width="22" height="22" viewBox="0 0 71 55" fill="currentColor"><path d="M60.1 4.9A58.5 58.5 0 0 0 45.6.6a.2.2 0 0 0-.2.1 40.8 40.8 0 0 0-1.8 3.7 54 54 0 0 0-16.2 0A37.2 37.2 0 0 0 25.6.7a.2.2 0 0 0-.2-.1A58.4 58.4 0 0 0 10.9 4.9a.2.2 0 0 0-.1.1C1.6 18.7-.9 32.2.3 45.4a.2.2 0 0 0 .1.2 58.8 58.8 0 0 0 17.7 8.9.2.2 0 0 0 .2-.1 42 42 0 0 0 3.6-5.9.2.2 0 0 0-.1-.3 38.7 38.7 0 0 1-5.5-2.6.2.2 0 0 1 0-.4l1.1-.8a.2.2 0 0 1 .2 0c11.5 5.3 24 5.3 35.4 0a.2.2 0 0 1 .2 0l1.1.8a.2.2 0 0 1 0 .4 36.1 36.1 0 0 1-5.5 2.6.2.2 0 0 0-.1.3 47.1 47.1 0 0 0 3.6 5.9.2.2 0 0 0 .2.1 58.7 58.7 0 0 0 17.7-8.9.2.2 0 0 0 .1-.2c1.5-15.3-2.5-28.6-10.6-40.4a.2.2 0 0 0-.1-.1ZM23.7 37.3c-3.5 0-6.4-3.2-6.4-7.1s2.8-7.1 6.4-7.1c3.6 0 6.4 3.2 6.4 7.1 0 3.9-2.9 7.1-6.4 7.1Zm23.6 0c-3.5 0-6.4-3.2-6.4-7.1s2.8-7.1 6.4-7.1c3.6 0 6.5 3.2 6.5 7.1 0 3.9-2.9 7.1-6.5 7.1Z"/></svg>
+        Entrar com Discord
+      </button>
+      <p class="text-gray-600 text-xs mt-6">Grãos salvos localmente via IndexedDB.<br>Sem cadastro, sem senha, sem email.</p>
+    </div>
+  </div>`;
+}
+
+// ═══════════════════════════════════════════════════════
+// HANDLERS DOM
+// ═══════════════════════════════════════════════════════
+function setFilter(r){ S.filter=r; render() }
+
+async function doGenerateTransfer(){
+  const target = document.getElementById('tr-target')?.value?.trim();
+  const grain  = document.getElementById('tr-grain')?.value;
+  if(!target){ toast('Informe o Discord ID do destinatário','error'); return }
+  if(!grain) { toast('Selecione um grão','error'); return }
+  if(target === S.user.id){ toast('Não pode transferir para si mesmo','error'); return }
+  const pkg = await generateTransferPkg(grain, target);
+  if(pkg){
+    await db.grains.where('id').equals(grain).modify({ owner: '__transferred__' });
+    const out = document.getElementById('tr-out');
+    const ta  = document.getElementById('tr-pkg');
+    if(out && ta){ out.classList.remove('hidden'); ta.value=pkg }
+    toast('Pacote gerado! Copie e envie ao destinatário.','success',5000);
+    // Refresh select
+    const sel = document.getElementById('tr-grain');
+    if(sel){ const op=sel.querySelector(`[value="${grain}"]`); if(op) op.remove() }
+  }
+}
+
+async function doReceive(){
+  const t = document.getElementById('tr-rcv')?.value?.trim();
+  if(!t){ toast('Cole o pacote de transferência','error'); return }
+  const ok = await receivePkg(t);
+  if(ok){ const el=document.getElementById('tr-rcv'); if(el) el.value='' }
+}
+
+function copyPkg(){
+  const ta = document.getElementById('tr-pkg');
+  if(!ta) return;
+  navigator.clipboard.writeText(ta.value)
+    .then(()=>toast('Copiado!','success',1500))
+    .catch(()=>{ ta.select(); document.execCommand('copy'); toast('Copiado!','success',1500) });
+}
+
+// ═══════════════════════════════════════════════════════
+// TIMER DE COOLDOWN
+// ═══════════════════════════════════════════════════════
+function startCdTimer(){
+  const tick = async () => {
+    const el = document.getElementById('cd-timer');
+    if(!el) return;
+    const lm = await db.settings.get('lastMine');
+    if(!lm) return;
+    const rem = CFG.COOLDOWN_MS - (Date.now()-lm.value);
+    if(rem <= 0){ render(); return }
+    el.textContent = `${Math.floor(rem/60000)}m ${Math.floor((rem%60000)/1000)}s`;
+    setTimeout(tick, 1000);
+  };
+  setTimeout(tick, 500);
+}
+
+// ═══════════════════════════════════════════════════════
+// RENDER PRINCIPAL
+// ═══════════════════════════════════════════════════════
+async function render(){
+  const app = document.getElementById('app');
+  if(!app) return;
+  let body = '';
+  try{
+    switch(S.page){
+      case 'inventory': body = await pageInventory(); break;
+      case 'mine':      body = await pageMine(); break;
+      case 'transfer':  body = await pageTransfer(); break;
+      case 'ranking':   body = await pageRanking(); break;
+      case 'grain':     body = await pageGrain(S.params.id); break;
+      default:          body = await pageInventory();
+    }
+  }catch(e){ body=`<div class="p-6 text-red-400">Erro: ${e.message}</div>` }
+  app.innerHTML = renderHeader() + `<main class="fade-in">${body}</main>`;
+  if(S.page==='mine' && !S.mining) startCdTimer();
+}
+
+// ═══════════════════════════════════════════════════════
+// INICIALIZAÇÃO
+// ═══════════════════════════════════════════════════════
+async function init(){
+  const fromDiscord = await handleDiscordCallback();
+  if(!fromDiscord){
+    const saved = await db.settings.get('discordUser');
+    if(saved?.value) S.user = saved.value;
+  }
+  await render();
+  if(S.user) initPeer();
+
+  // Re-render mining progress every 800ms
+  setInterval(()=>{ if(S.page==='mine' && S.mining) render() }, 800);
+}
+
+init();
+</script>
+</body>
+</html>
