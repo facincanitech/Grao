@@ -3,7 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>🌾 GrãoNet – Mineração de Grãos</title>
+  <title> GrãoNet – Mineração de Grãos</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌾</text></svg>">
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/dexie@3/dist/dexie.js"></script>
   <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
@@ -845,7 +846,7 @@ function grainCard(g, compact=false){
     </div>
     <div class="font-bold text-xs font-mono" style="color:${r.color}">${g.id}</div>
     <div class="text-[10px] text-gray-400">${r.label}</div>
-    ${!compact?`<div class="text-[9px] text-gray-600 mt-1 truncate">nonce: ${(g.nonce||0).toLocaleString()}</div>`:''}
+    ${!compact?`<div class="text-[9px] text-gray-600 mt-1 truncate">raridade: ${(g.nonce||0).toLocaleString()}</div>`:''}
   </div>`;
 }
 
@@ -1181,7 +1182,7 @@ async function pageGrain(id){
     <div class="bg-gray-900 rounded-lg p-4 mb-4">
       <div class="text-xs text-gray-400 mb-3 font-bold">Dados Técnicos</div>
       <div class="space-y-2 text-xs font-mono">
-        <div><span class="text-gray-500">Nonce: </span><span class="text-gray-300">${(g.nonce||0).toLocaleString()}</span></div>
+        <div><span class="text-gray-500">Raridade: </span><span class="text-gray-300">${(g.nonce||0).toLocaleString()}</span></div>
         <div><span class="text-gray-500">Hash: </span><span class="text-gray-300 break-all">${g.hash}</span></div>
         <div><span class="text-gray-500">Assinatura: </span><span class="text-gray-300 break-all">${g.signature}</span></div>
       </div>
