@@ -996,8 +996,11 @@
         // Sempre reativa a almofada imediatamente
         history.pushState({ trap: true }, '', window.location.href);
         if (!S.user) return;
-        const seq = { 'inventory': 'mine', 'mine': 'market', 'market': 'transfer', 'transfer': 'ranking', 'ranking': 'inventory', 'grain': 'inventory' };
-        go(seq[S.page] || 'inventory');
+        
+        // Agora, qualquer página que não seja o inventário volta para o inventário
+        if (S.page !== 'inventory') {
+          go('inventory');
+        }
       });
     }
 
