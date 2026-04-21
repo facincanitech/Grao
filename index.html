@@ -845,7 +845,7 @@ function grainCard(g, compact=false){
     </div>
     <div class="font-bold text-xs font-mono" style="color:${r.color}">${g.id}</div>
     <div class="text-[10px] text-gray-400">${r.label}</div>
-    ${!compact?`<div class="text-[9px] text-gray-600 mt-1 truncate">${g.hash.slice(0,18)}…</div>`:''}
+    ${!compact?`<div class="text-[9px] text-gray-600 mt-1 truncate">nonce: ${(g.nonce||0).toLocaleString()}</div>`:''}
   </div>`;
 }
 
@@ -1181,9 +1181,9 @@ async function pageGrain(id){
     <div class="bg-gray-900 rounded-lg p-4 mb-4">
       <div class="text-xs text-gray-400 mb-3 font-bold">Dados Técnicos</div>
       <div class="space-y-2 text-xs font-mono">
+        <div><span class="text-gray-500">Nonce: </span><span class="text-gray-300">${(g.nonce||0).toLocaleString()}</span></div>
         <div><span class="text-gray-500">Hash: </span><span class="text-gray-300 break-all">${g.hash}</span></div>
         <div><span class="text-gray-500">Assinatura: </span><span class="text-gray-300 break-all">${g.signature}</span></div>
-        <div><span class="text-gray-500">Nonce: </span><span class="text-gray-300">${(g.nonce||0).toLocaleString()}</span></div>
       </div>
     </div>
     ${(g.transfer_history?.length>0)?`<div class="bg-gray-900 rounded-lg p-4 mb-4">
