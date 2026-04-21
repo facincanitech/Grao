@@ -1677,7 +1677,8 @@
       if(winRarity) {
         const newId = await nextId(winRarity);
         const g = {
-          id: newId, rarity: winRarity, hash: await sha256(`event:${type}:${Date.now()}:${S.user.id}`), nonce: 0,
+          id: newId, rarity: winRarity, hash: 'EVENT_' + await sha256(Date.now() + S.user.id + Math.random()),
+          nonce: Math.floor(Math.random() * 10) + 1,
           generated_at: Date.now(), discord_user: S.user.global_name || S.user.username, discord_id: S.user.id,
           network_size_at_generation: S.networkSize, owner: S.user.id, transfer_history: []
         };
