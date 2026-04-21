@@ -802,13 +802,15 @@ function toast(msg, type='info', dur=3000){
 // ═══════════════════════════════════════════════════════
 function go(page, params={}){ S.page=page; S.params=params; render(); window.scrollTo(0,0) }
 
-history.pushState(null, '', window.location.href);
-window.addEventListener('popstate', (e) => {
+function setupBackButton() {
   history.pushState(null, '', window.location.href);
-  if(!S.user) return;
-  const seq = { 'inventory': 'mine', 'mine': 'market', 'market': 'transfer', 'transfer': 'ranking', 'ranking': 'inventory' };
-  go(seq[S.page] || 'inventory');
-});
+  window.addEventListener('popstate', (e) => {
+    history.pushState(null, '', window.location.href);
+    if(!S.user) return;
+    const seq = { 'inventory': 'mine', 'mine': 'market', 'market': 'transfer', 'transfer': 'ranking', 'ranking': 'inventory' };
+    go(seq[S.page] || 'inventory');
+  });
+}
 
 // ═══════════════════════════════════════════════════════
 // HEADER
@@ -1364,6 +1366,7 @@ async function init(){
   }
   await loadLavoura();
   await render();
+  setupBackButton();
   if(S.user){ initPeer(); startPresence(); }
 
   // Re-render mining progress every 800ms
