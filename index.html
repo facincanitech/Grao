@@ -769,11 +769,15 @@ function toast(msg, type='info', dur=3000){
 function go(page, params={}){ S.page=page; S.params=params; render(); window.scrollTo(0,0) }
 
 function setupBackButton() {
-  history.pushState(null, '', window.location.href);
+  // Duplo pushState cria uma "almofada" de segurança para cliques rápidos no Android
+  history.pushState({ trap: true }, '', window.location.href);
+  history.pushState({ trap: true }, '', window.location.href);
+  
   window.addEventListener('popstate', (e) => {
-    history.pushState(null, '', window.location.href);
+    // Sempre reativa a almofada imediatamente
+    history.pushState({ trap: true }, '', window.location.href);
     if(!S.user) return;
-    const seq = { 'inventory': 'mine', 'mine': 'market', 'market': 'transfer', 'transfer': 'ranking', 'ranking': 'inventory' };
+    const seq = { 'inventory': 'mine', 'mine': 'market', 'market': 'transfer', 'transfer': 'ranking', 'ranking': 'inventory', 'grain': 'inventory' };
     go(seq[S.page] || 'inventory');
   });
 }
