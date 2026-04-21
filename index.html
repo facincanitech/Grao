@@ -139,7 +139,9 @@ const S = {
   peerId: null,
   transferTarget: '',
   lavoura: null,
-  myContrib: 0
+  myContrib: 0,
+  onlineCount: 0,
+  acceptingListing: null
 };
 
 // ═══════════════════════════════════════════════════════
@@ -480,7 +482,7 @@ function updateNetSize(){ S.networkSize = Math.max(1, S.peers.size+1) }
 function syncNetwork(){ updateNetSize() }
 function updateHeader(){
   const el = document.getElementById('net-size');
-  if(el) el.textContent = `${S.networkSize} nó${S.networkSize!==1?'s':''}`;
+  if(el) el.textContent = `${S.onlineCount} online · ${S.networkSize} na rede`;
 }
 
 // ═══════════════════════════════════════════════════════
@@ -567,6 +569,148 @@ async function handleHarvest(){
     }
     await loadLavoura();
   }catch(e){}
+}
+
+// ═══════════════════════════════════════════════════════
+// PRESENÇA / ONLINE
+// ═══════════════════════════════════════════════════════
+async function updateOnlineCount(){
+  try{
+    const since = Date.now() - 5*60*1000;
+    const { count } = await sb.from('users').select('*',{count:'exact',head:true}).gte('last_seen', since);
+    S.onlineCount = count || 0;
+    updateHeader();
+  }catch(e){}
+}
+
+function startPresence(){
+  const tick = async () => {
+    if(!S.user) return;
+    await sb.from('users').update({ last_seen: Date.now() }).eq('discord_id', S.user.id);
+    await updateOnlineCount();
+  };
+  tick();
+  setInterval(tick, 60000);
+}
+
+// ═══════════════════════════════════════════════════════
+// MERCADO
+// ═══════════════════════════════════════════════════════
+async function createListing(){
+  const grainId      = document.getElementById('mkt-grain')?.value;
+  const askingRarity = document.getElementById('mkt-asking-rarity')?.value;
+  const askingQty    = parseInt(document.getElementById('mkt-qty')?.value) || 1;
+  if(!grainId){ toast('Selecione um grão','error'); return }
+
+  const grain = await db.grains.where('id').equals(grainId).first();
+  if(!grain){ toast('Grão não encontrado','error'); return }
+  if(grain.rarity === askingRarity){ toast('Não pode trocar pelo mesmo minério','error'); return }
+
+  const { error } = await sb.from('market_listings').insert({
+    seller_id:    S.user.id,
+    seller_name:  S.user.global_name || S.user.username,
+    grain_id:     grainId,
+    grain_rarity: grain.rarity,
+    asking_rarity: askingRarity,
+    asking_qty:   askingQty
+  });
+  if(error){ toast('Erro ao criar oferta','error'); return }
+  toast('Oferta publicada!','success');
+  render();
+}
+
+async function cancelListing(id){
+  await sb.from('market_listings').update({ status:'cancelled' }).eq('id',id).eq('seller_id',S.user.id);
+  toast('Oferta cancelada','info');
+  render();
+}
+
+function openAccept(listing){ S.acceptingListing = listing; render() }
+function closeAccept(){ S.acceptingListing = null; render() }
+
+async function confirmTrade(listingId, paymentIds){
+  if(!paymentIds.length){ toast('Selecione os grãos de pagamento','error'); return }
+  const { data, error } = await sb.rpc('execute_trade',{
+    p_listing_id: listingId,
+    p_buyer_id: S.user.id,
+    p_payment_grain_ids: paymentIds
+  });
+  if(error || data?.error){ toast(`Erro: ${data?.error||error?.message}`,'error'); return }
+
+  // atualiza local: recebe grain, perde payments
+  const listing = S.acceptingListing;
+  const received = await sb.from('grains').select('*').eq('id', data.grain_id).single();
+  if(received.data){
+    const g = received.data;
+    const exists = await db.grains.where('id').equals(g.id).first();
+    if(exists) await db.grains.where('id').equals(g.id).modify({...g, owner: S.user.id});
+    else await db.grains.add({...g, owner: S.user.id});
+  }
+  for(const pid of paymentIds){
+    await db.grains.where('id').equals(pid).modify({ owner: data.seller_id });
+  }
+
+  S.acceptingListing = null;
+  spawnParticles(listing.grain_rarity);
+  toast(`✅ Troca concluída! Você recebeu ${RARITY[listing.grain_rarity].emoji} ${listing.grain_id}`,'success',5000);
+  render();
+}
+
+function listingCard(l, myGrains){
+  const gr = RARITY[l.grain_rarity] || {};
+  const ar = RARITY[l.asking_rarity] || {};
+  const isAccepting = S.acceptingListing?.id === l.id;
+  const payable = myGrains.filter(g => g.rarity === l.asking_rarity);
+  const canPay  = payable.length >= l.asking_qty;
+
+  return `<div class="card-${l.grain_rarity} rounded-lg p-4 ${isAccepting?'ring-2 ring-cyan-500':''}">
+    <div class="flex items-center justify-between mb-3">
+      <div>
+        <div class="text-xs text-gray-400 mb-1">${l.seller_name}</div>
+        <div class="font-bold text-sm" style="color:${gr.color}">${gr.emoji} ${l.grain_id}</div>
+        <div class="text-xs" style="color:${gr.color}">${gr.label}</div>
+      </div>
+      <div class="text-right">
+        <div class="text-xs text-gray-400 mb-1">quer receber</div>
+        <div class="font-bold text-sm" style="color:${ar.color}">${l.asking_qty}× ${ar.emoji}</div>
+        <div class="text-xs" style="color:${ar.color}">${ar.label}</div>
+      </div>
+    </div>
+    ${!isAccepting ? `
+      <button onclick="openAccept(${JSON.stringify(l).replace(/"/g,'&quot;')})"
+        class="w-full text-xs px-3 py-2 rounded transition-colors ${canPay?'bg-green-900 hover:bg-green-800 text-green-100':'bg-gray-800 text-gray-500 cursor-not-allowed'}"
+        ${!canPay?'disabled':''}>
+        ${canPay?'🤝 Aceitar Troca':`Precisa ${l.asking_qty}× ${ar.emoji} (você tem ${payable.length})`}
+      </button>
+    ` : `
+      <div class="text-xs text-gray-400 mb-2">Selecione ${l.asking_qty} ${ar.emoji} ${ar.label} para pagar:</div>
+      <div class="flex flex-wrap gap-1 mb-3 max-h-20 overflow-y-auto scrollbar-thin">
+        ${payable.map(g=>`<label class="cursor-pointer">
+          <input type="checkbox" class="pay-grain hidden" value="${g.id}">
+          <span class="px-2 py-0.5 rounded text-[10px] font-mono border cursor-pointer select-label"
+            style="color:${ar.color};border-color:${ar.color}40;background:${ar.color}10"
+            onclick="togglePayGrain(this)">${ar.emoji} ${g.id}</span>
+        </label>`).join('')}
+      </div>
+      <div class="flex gap-2">
+        <button onclick="doConfirmTrade('${l.id}',${l.asking_qty})" class="flex-1 bg-green-900 hover:bg-green-800 text-xs px-3 py-2 rounded transition-colors">✓ Confirmar</button>
+        <button onclick="closeAccept()" class="bg-gray-800 hover:bg-gray-700 text-xs px-3 py-2 rounded transition-colors">✕</button>
+      </div>
+    `}
+  </div>`;
+}
+
+function togglePayGrain(el){
+  const inp = el.previousElementSibling;
+  inp.checked = !inp.checked;
+  el.style.background = inp.checked ? RARITY[el.style.color]?.color+'40' || '#ffffff30' : '';
+  el.style.fontWeight  = inp.checked ? 'bold' : 'normal';
+}
+
+function doConfirmTrade(listingId, qty){
+  const checked = [...document.querySelectorAll('.pay-grain:checked')].map(i=>i.value);
+  if(checked.length !== qty){ toast(`Selecione exatamente ${qty} grão(s)`,'warning'); return }
+  confirmTrade(listingId, checked);
 }
 
 async function syncLocalGrains(userId){
@@ -663,7 +807,7 @@ function renderHeader(){
     <div class="flex items-center gap-3 min-w-0">
       <button onclick="go('inventory')" class="text-xl font-bold whitespace-nowrap" style="color:#00FFFF">🌾 GrãoNet</button>
       ${u?`<nav class="hidden sm:flex gap-1">
-        ${nb('inventory','📦 Inventário')}${nb('mine','⛏️ Minerar')}${nb('transfer','🔄 Transferir')}${nb('ranking','🏆 Ranking')}
+        ${nb('inventory','📦 Inventário')}${nb('mine','⛏️ Minerar')}${nb('market','🛒 Mercado')}${nb('transfer','🔄 Transferir')}${nb('ranking','🏆 Ranking')}
       </nav>`:''}
     </div>
     <div class="flex items-center gap-2 text-sm shrink-0">
@@ -671,7 +815,7 @@ function renderHeader(){
         ${av?`<img src="${av}" class="w-7 h-7 rounded-full border border-gray-700 shrink-0">`:''}
         <span class="text-gray-300 hidden sm:inline truncate max-w-[120px]">${nm}</span>
         <span class="text-xs text-gray-600">|</span>
-        <span class="text-xs text-gray-500" id="net-size">${S.networkSize} nó${S.networkSize!==1?'s':''}</span>
+        <span class="text-xs text-gray-500" id="net-size">${S.onlineCount} online · ${S.networkSize} na rede</span>
         <button onclick="logout()" class="text-xs text-gray-600 hover:text-red-400 transition-colors ml-1">Sair</button>
       `:`<button onclick="loginWithDiscord()" class="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 px-4 py-2 rounded text-sm font-medium transition-colors">
         <svg width="16" height="16" viewBox="0 0 71 55" fill="currentColor"><path d="M60.1 4.9A58.5 58.5 0 0 0 45.6.6a.2.2 0 0 0-.2.1 40.8 40.8 0 0 0-1.8 3.7 54 54 0 0 0-16.2 0A37.2 37.2 0 0 0 25.6.7a.2.2 0 0 0-.2-.1A58.4 58.4 0 0 0 10.9 4.9a.2.2 0 0 0-.1.1C1.6 18.7-.9 32.2.3 45.4a.2.2 0 0 0 .1.2 58.8 58.8 0 0 0 17.7 8.9.2.2 0 0 0 .2-.1 42 42 0 0 0 3.6-5.9.2.2 0 0 0-.1-.3 38.7 38.7 0 0 1-5.5-2.6.2.2 0 0 1 0-.4l1.1-.8a.2.2 0 0 1 .2 0c11.5 5.3 24 5.3 35.4 0a.2.2 0 0 1 .2 0l1.1.8a.2.2 0 0 1 0 .4 36.1 36.1 0 0 1-5.5 2.6.2.2 0 0 0-.1.3 47.1 47.1 0 0 0 3.6 5.9.2.2 0 0 0 .2.1 58.7 58.7 0 0 0 17.7-8.9.2.2 0 0 0 .1-.2c1.5-15.3-2.5-28.6-10.6-40.4a.2.2 0 0 0-.1-.1ZM23.7 37.3c-3.5 0-6.4-3.2-6.4-7.1s2.8-7.1 6.4-7.1c3.6 0 6.4 3.2 6.4 7.1 0 3.9-2.9 7.1-6.4 7.1Zm23.6 0c-3.5 0-6.4-3.2-6.4-7.1s2.8-7.1 6.4-7.1c3.6 0 6.5 3.2 6.5 7.1 0 3.9-2.9 7.1-6.5 7.1Z"/></svg>
@@ -680,7 +824,7 @@ function renderHeader(){
     </div>
   </header>
   ${u?`<nav class="sm:hidden flex gap-1 px-4 py-2 bg-gray-950 border-b border-gray-900">
-    ${nb('inventory','📦')}${nb('mine','⛏️')}${nb('transfer','🔄')}${nb('ranking','🏆')}
+    ${nb('inventory','📦')}${nb('mine','⛏️')}${nb('market','🛒')}${nb('transfer','🔄')}${nb('ranking','🏆')}
   </nav>`:''}`;
 }
 
@@ -931,6 +1075,66 @@ async function pageRanking(){
   </div>`;
 }
 
+async function pageMarket(){
+  if(!S.user) return pageLogin();
+  const { data: listings } = await sb.from('market_listings').select('*').eq('status','active').order('created_at',{ascending:false});
+  const myGrains    = await db.grains.where('owner').equals(S.user.id).toArray();
+  const myListings  = (listings||[]).filter(l=>l.seller_id===S.user.id);
+  const allListings = (listings||[]).filter(l=>l.seller_id!==S.user.id);
+
+  return `<div class="p-4 sm:p-6 max-w-4xl mx-auto">
+    <h2 class="text-2xl font-bold mb-1">🛒 Mercado</h2>
+    <p class="text-gray-400 text-sm mb-5">Troque Grãos por outros Grãos diretamente com a rede.</p>
+
+    <div class="bg-gray-900 rounded-lg p-4 mb-6">
+      <h3 class="font-bold text-sm mb-3 text-cyan-400">+ Criar Oferta</h3>
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div>
+          <label class="text-xs text-gray-400 block mb-1">Grão que você oferece</label>
+          <select id="mkt-grain" class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-xs focus:border-cyan-500 focus:outline-none">
+            <option value="">-- selecione --</option>
+            ${myGrains.map(g=>`<option value="${g.id}">${RARITY[g.rarity]?.emoji} ${g.id} (${RARITY[g.rarity]?.label})</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label class="text-xs text-gray-400 block mb-1">Quer receber</label>
+          <select id="mkt-asking-rarity" class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-xs focus:border-cyan-500 focus:outline-none">
+            ${ORDER.map(r=>`<option value="${r}">${RARITY[r].emoji} ${RARITY[r].label}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label class="text-xs text-gray-400 block mb-1">Quantidade</label>
+          <input type="number" id="mkt-qty" min="1" max="999" value="1"
+            class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-xs focus:border-cyan-500 focus:outline-none">
+        </div>
+      </div>
+      <button onclick="createListing()" class="mt-3 bg-cyan-800 hover:bg-cyan-700 px-4 py-2 rounded text-xs font-medium transition-colors">Publicar Oferta</button>
+    </div>
+
+    ${myListings.length>0?`<div class="mb-6">
+      <h3 class="font-bold text-sm mb-3 text-gray-300">Minhas Ofertas (${myListings.length})</h3>
+      <div class="space-y-2">
+        ${myListings.map(l=>`<div class="bg-gray-900 rounded-lg p-3 flex items-center justify-between text-sm">
+          <div class="flex items-center gap-3">
+            <span style="color:${RARITY[l.grain_rarity]?.color}">${RARITY[l.grain_rarity]?.emoji} ${l.grain_id}</span>
+            <span class="text-gray-500">→</span>
+            <span style="color:${RARITY[l.asking_rarity]?.color}">${l.asking_qty}× ${RARITY[l.asking_rarity]?.emoji} ${RARITY[l.asking_rarity]?.label}</span>
+          </div>
+          <button onclick="cancelListing('${l.id}')" class="text-xs text-red-500 hover:text-red-400 transition-colors">✕ Cancelar</button>
+        </div>`).join('')}
+      </div>
+    </div>`:''}
+
+    <h3 class="font-bold text-sm mb-3 text-gray-300">Ofertas Disponíveis (${allListings.length})</h3>
+    ${allListings.length===0?`<div class="text-center py-12 text-gray-600 text-sm">
+      <div class="text-4xl mb-3">🌾</div>
+      Nenhuma oferta no momento
+    </div>`:`<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+      ${allListings.map(l=>listingCard(l,myGrains)).join('')}
+    </div>`}
+  </div>`;
+}
+
 async function pageGrain(id){
   const g = await db.grains.where('id').equals(id).first();
   if(!g) return `<div class="p-6 text-center">
@@ -1080,6 +1284,7 @@ async function render(){
     switch(S.page){
       case 'inventory': body = await pageInventory(); break;
       case 'mine':      body = await pageMine(); break;
+      case 'market':    body = await pageMarket(); break;
       case 'transfer':  body = await pageTransfer(); break;
       case 'ranking':   body = await pageRanking(); break;
       case 'grain':     body = await pageGrain(S.params.id); break;
@@ -1107,7 +1312,7 @@ async function init(){
   }
   await loadLavoura();
   await render();
-  if(S.user) initPeer();
+  if(S.user){ initPeer(); startPresence(); }
 
   // Re-render mining progress every 800ms
   setInterval(()=>{ if(S.page==='mine' && S.mining) render() }, 800);
