@@ -252,6 +252,13 @@
       animation: fadeIn 0.3s ease forwards
     }
 
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      20%, 60% { transform: translateX(-4px) rotate(-2deg); }
+      40%, 80% { transform: translateX(4px) rotate(2deg); }
+    }
+    .shake-anim { animation: shake 0.4s ease-in-out; }
+
     select,
     input,
     textarea {
@@ -1017,7 +1024,7 @@
     <div class="flex items-center gap-3 min-w-0">
       <button onclick="go('inventory')" class="text-xl font-bold whitespace-nowrap" style="color:#00FFFF">🌾 Grão</button>
       ${u ? `<nav class="hidden sm:flex gap-1">
-        ${nb('inventory', '📦 Inventário')}${nb('mine', '⛏️ Minerar')}${nb('market', '🛒 Mercado')}${nb('transfer', '🔄 Transferir')}${nb('ranking', '🏆 Ranking')}
+        ${nb('inventory', '📦 Inventário')}${nb('mine', '⛏️ Minerar')}${nb('market', '🛒 Mercado')}${nb('ranking', '🏆 Ranking')}${nb('event', '🎲 Evento')}${nb('transfer', '🔄 Transferir')}
       </nav>`: ''}
     </div>
     <div class="flex items-center gap-2 text-sm shrink-0">
@@ -1033,8 +1040,8 @@
       </button>`}
     </div>
   </header>
-  ${u ? `<nav class="sm:hidden flex gap-1 px-4 py-2 bg-gray-950 border-b border-gray-900">
-    ${nb('inventory', '📦')}${nb('mine', '⛏️')}${nb('market', '🛒')}${nb('transfer', '🔄')}${nb('ranking', '🏆')}
+  ${u ? `<nav class="sm:hidden flex gap-1 px-4 py-2 bg-gray-950 border-b border-gray-900 overflow-x-auto scrollbar-thin">
+    ${nb('inventory', '📦')}${nb('mine', '⛏️')}${nb('market', '🛒')}${nb('ranking', '🏆')}${nb('event', '🎲')}${nb('transfer', '🔄')}
   </nav>`: ''}`;
     }
 
@@ -1439,6 +1446,255 @@
   </div>`;
     }
 
+    window.evtSelections = { forge: new Set(), gacha: new Set() };
+    window.evtAvailable = [];
+
+    async function pageEvent() {
+      console.log('Tentando carregar página de evento...');
+      if (!S.user) return pageLogin();
+      window.evtAvailable = await db.grains.where('owner').equals(S.user.id).toArray();
+      const counts = {};
+      for (const r of ORDER) counts[r] = window.evtAvailable.filter(g => g.rarity === r).length;
+
+      const forgeableOptions = ORDER.slice(2).map((r, i) => {
+        const realIdx = i + 2;
+        return { 
+          id: r, label: RARITY[r].label, emoji: RARITY[r].emoji, count: counts[r],
+          nextId: ORDER[realIdx - 1], nextLabel: RARITY[ORDER[realIdx - 1]].label, nextColor: RARITY[ORDER[realIdx - 1]].color
+        };
+      });
+
+      return `<div class="p-4 sm:p-6 max-w-5xl mx-auto">
+    <div class="flex items-center justify-between mb-2">
+      <h2 class="text-2xl font-bold">🎲 Evento Oficial</h2>
+      <span class="px-2 py-1 bg-red-900 text-red-200 text-[10px] font-bold rounded animate-pulse">TEMPO LIMITADO</span>
+    </div>
+    <p class="text-gray-400 text-sm mb-6">Queime seus grãos para forjar minérios mais raros ou tentar a sorte grande no Caça-Níquel. <br><span class="text-xs text-yellow-500">Aviso: Grãos gastos são destruídos permanentemente. A raridade Nióbio não pode ser forjada. Escolha sabiamente quais grãos sacrificar!</span></p>
+
+    <div class="grid md:grid-cols-2 gap-6">
+      
+      <!-- FORJA -->
+      <div class="bg-gray-900 border border-orange-900/50 rounded-xl p-5 relative overflow-hidden flex flex-col">
+        <div class="absolute -right-10 -top-10 text-9xl opacity-5">🔥</div>
+        <h3 class="font-bold text-lg text-orange-400 mb-1 flex items-center gap-2">🔥 A Forja</h3>
+        <p class="text-xs text-gray-400 mb-4 h-8">Selecione e queime 10 grãos iguais. 50% de chance de forjar 1 da raridade superior.</p>
+        
+        <div class="bg-gray-950 rounded p-3 mb-2 flex-1 flex flex-col">
+          <label class="text-[10px] text-gray-500 block mb-1">Selecionar Material (Custo: 10x)</label>
+          <select id="evt-forge-sel" class="w-full bg-gray-800 border border-gray-700 rounded px-2 py-2 text-sm focus:border-orange-500 outline-none mb-2" onchange="window.updateForgePreview()">
+            <option value="">-- Escolha um material --</option>
+            ${forgeableOptions.map(o => `<option value="${o.id}" ${o.count < 10 ? 'disabled' : ''}>${o.emoji} ${o.label} (Você tem: ${o.count})</option>`).join('')}
+          </select>
+          <div id="forge-preview" class="text-xs text-gray-400 text-center py-2 bg-gray-900 rounded border border-gray-800 mb-2 min-h-[34px]"></div>
+          
+          <div class="text-[10px] text-gray-500 mb-1 flex justify-between">
+            <span>Seus Grãos:</span>
+            <span id="forge-sel-count" class="font-bold text-orange-400">0 / 10 selecionados</span>
+          </div>
+          <div id="forge-item-list" class="flex-1 bg-gray-900 rounded border border-gray-800 p-2 overflow-y-auto max-h-40 flex flex-wrap gap-1 content-start scrollbar-thin">
+            <div class="text-[10px] text-gray-600 w-full text-center py-4">Selecione o material acima</div>
+          </div>
+        </div>
+        
+        <button onclick="doEventAction('forge')" id="btn-forge" disabled class="w-full bg-gradient-to-r from-orange-800 to-red-800 hover:from-orange-700 hover:to-red-700 py-3 rounded-lg font-bold text-sm transition-all shadow-[0_0_15px_rgba(221,107,32,0.3)] hover:shadow-[0_0_25px_rgba(221,107,32,0.5)] disabled:opacity-50 disabled:cursor-not-allowed">
+          🔨 Bater o Martelo (50%)
+        </button>
+      </div>
+
+      <!-- GACHA -->
+      <div class="bg-gray-900 border border-purple-900/50 rounded-xl p-5 relative overflow-hidden flex flex-col">
+        <div class="absolute -right-10 -top-10 text-9xl opacity-5">🎰</div>
+        <h3 class="font-bold text-lg text-purple-400 mb-1 flex items-center gap-2">🎰 Caça-Níquel</h3>
+        <p class="text-xs text-gray-400 mb-4 h-8">Aposte 5 grãos específicos. Recompensas de 1 a 5 níveis de raridade acima (0.05% jackpot).</p>
+
+        <div class="bg-gray-950 rounded p-3 mb-2 flex-1 flex flex-col">
+          <label class="text-[10px] text-gray-500 block mb-1">Selecionar Aposta (Custo: 5x)</label>
+          <select id="evt-gacha-sel" class="w-full bg-gray-800 border border-gray-700 rounded px-2 py-2 text-sm focus:border-purple-500 outline-none mb-2" onchange="window.updateGachaPreview()">
+            <option value="">-- Escolha um material --</option>
+            ${forgeableOptions.map(o => `<option value="${o.id}" ${o.count < 5 ? 'disabled' : ''}>${o.emoji} ${o.label} (Você tem: ${o.count})</option>`).join('')}
+          </select>
+          <div class="text-[10px] text-gray-500 text-center py-2 bg-gray-900 rounded border border-gray-800 mb-2 min-h-[34px] flex flex-col justify-center">
+            <span>Risco: Alto | Jackpot: 5 Níveis Acima</span>
+          </div>
+
+          <div class="text-[10px] text-gray-500 mb-1 flex justify-between">
+            <span>Seus Grãos:</span>
+            <span id="gacha-sel-count" class="font-bold text-purple-400">0 / 5 selecionados</span>
+          </div>
+          <div id="gacha-item-list" class="flex-1 bg-gray-900 rounded border border-gray-800 p-2 overflow-y-auto max-h-40 flex flex-wrap gap-1 content-start scrollbar-thin">
+            <div class="text-[10px] text-gray-600 w-full text-center py-4">Selecione o material acima</div>
+          </div>
+        </div>
+
+        <button onclick="doEventAction('gacha')" id="btn-gacha" disabled class="w-full bg-gradient-to-r from-purple-800 to-pink-800 hover:from-purple-700 hover:to-pink-700 py-3 rounded-lg font-bold text-sm transition-all shadow-[0_0_15px_rgba(168,85,247,0.3)] hover:shadow-[0_0_25px_rgba(168,85,247,0.5)] disabled:opacity-50 disabled:cursor-not-allowed">
+          🎰 Puxar Alavanca
+        </button>
+      </div>
+
+    </div>
+  </div>`;
+    }
+
+    window.updateForgePreview = function() {
+      const sel = document.getElementById('evt-forge-sel');
+      if(!sel) return;
+      window.evtSelections.forge.clear();
+      
+      const v = sel.value;
+      const idx = ORDER.indexOf(v);
+      const el = document.getElementById('forge-preview');
+      const listEl = document.getElementById('forge-item-list');
+      
+      if(idx >= 2) {
+        const pR = ORDER[idx-1];
+        if(el) el.innerHTML = `Sucesso: <span style="color:${RARITY[pR].color}" class="font-bold">${RARITY[pR].emoji} 1x ${RARITY[pR].label}</span>`;
+        window.renderEvtList(v, 'forge', listEl);
+      } else {
+        if(el) el.innerHTML = '';
+        if(listEl) listEl.innerHTML = '<div class="text-[10px] text-gray-600 w-full text-center py-4">Selecione o material acima</div>';
+      }
+      window.updateEvtBtn('forge');
+    };
+
+    window.updateGachaPreview = function() {
+      const sel = document.getElementById('evt-gacha-sel');
+      if(!sel) return;
+      window.evtSelections.gacha.clear();
+      const listEl = document.getElementById('gacha-item-list');
+      if(sel.value) window.renderEvtList(sel.value, 'gacha', listEl);
+      else if(listEl) listEl.innerHTML = '<div class="text-[10px] text-gray-600 w-full text-center py-4">Selecione o material acima</div>';
+      window.updateEvtBtn('gacha');
+    };
+
+    window.renderEvtList = function(rarityId, type, container) {
+      const items = window.evtAvailable.filter(g => g.rarity === rarityId);
+      // Sort by nonce so user can pick lowest/highest easily
+      items.sort((a,b) => (a.nonce||0) - (b.nonce||0));
+      
+      container.innerHTML = items.map(g => {
+        const isSel = window.evtSelections[type].has(g.id);
+        const color = RARITY[rarityId].color;
+        const colorHex = isSel ? color : '#374151'; // gray-700
+        const bgHex = isSel ? color+'30' : 'transparent';
+        
+        return `<button onclick="window.toggleEvtGrain('${g.id}', '${type}')" id="evt-btn-${type}-${g.id}"
+          class="px-2 py-1 border rounded text-[10px] font-mono transition-colors flex flex-col items-center hover:bg-gray-800"
+          style="border-color:${colorHex}; background:${bgHex}; color:${isSel ? '#fff' : '#9ca3af'}">
+          <span>${g.id}</span>
+          <span class="text-[8px] opacity-70">N: ${g.nonce||0}</span>
+        </button>`;
+      }).join('');
+    };
+
+    window.toggleEvtGrain = function(grainId, type) {
+      const set = window.evtSelections[type];
+      const max = type === 'forge' ? 10 : 5;
+      
+      if(set.has(grainId)) {
+        set.delete(grainId);
+      } else {
+        if(set.size >= max) return; // limit reached
+        set.add(grainId);
+      }
+      
+      // Update specific button visually
+      const btn = document.getElementById(`evt-btn-${type}-${grainId}`);
+      if(btn) {
+        const selVal = document.getElementById(`evt-${type}-sel`).value;
+        const color = RARITY[selVal].color;
+        const isSel = set.has(grainId);
+        btn.style.borderColor = isSel ? color : '#374151';
+        btn.style.background = isSel ? color+'30' : 'transparent';
+        btn.style.color = isSel ? '#fff' : '#9ca3af';
+      }
+      
+      window.updateEvtBtn(type);
+    };
+
+    window.updateEvtBtn = function(type) {
+      const max = type === 'forge' ? 10 : 5;
+      const set = window.evtSelections[type];
+      const btn = document.getElementById(`btn-${type}`);
+      const countEl = document.getElementById(`${type}-sel-count`);
+      if(countEl) countEl.textContent = `${set.size} / ${max} selecionados`;
+      if(btn) btn.disabled = (set.size !== max);
+    };
+
+    window.doEventAction = async function(type) {
+      if(S.mining) { toast('Não pode usar o evento enquanto minera!', 'error'); return; }
+      
+      const isForge = type === 'forge';
+      const selId = isForge ? 'evt-forge-sel' : 'evt-gacha-sel';
+      const sel = document.getElementById(selId);
+      if(!sel || !sel.value) return;
+      
+      const costRarity = sel.value;
+      const costQty = isForge ? 10 : 5;
+      const idx = ORDER.indexOf(costRarity);
+      if(idx < 2) return;
+
+      const set = window.evtSelections[type];
+      if(set.size !== costQty) return;
+
+      const btn = document.getElementById(`btn-${type}`);
+      btn.disabled = true;
+      const origTxt = btn.innerHTML;
+      btn.innerHTML = isForge ? '🔨 Batendo...' : '🎰 Girando...';
+      if(!isForge) btn.classList.add('animate-pulse');
+      else btn.classList.add('shake-anim');
+
+      const toBurn = Array.from(set);
+      for(const id of toBurn) {
+        await db.grains.where('id').equals(id).modify({ owner: '__burned__' });
+        await sb.from('grains').update({ owner: '__burned__' }).eq('id', id);
+      }
+
+      await new Promise(r => setTimeout(r, 1200));
+
+      let winRarity = null;
+
+      if(isForge) {
+        if(Math.random() < 0.5) winRarity = ORDER[idx - 1];
+      } else {
+        const roll = Math.random() * 100;
+        let targetTierBoost = 0;
+        if(roll < 0.05) targetTierBoost = 5;
+        else if(roll < 0.15) targetTierBoost = 4;
+        else if(roll < 0.45) targetTierBoost = 3;
+        else if(roll < 1.95) targetTierBoost = 2;
+        else if(roll < 19.95) targetTierBoost = 1;
+
+        if(targetTierBoost > 0) {
+          const targetIdx = Math.max(1, idx - targetTierBoost);
+          winRarity = ORDER[targetIdx];
+        }
+      }
+
+      btn.classList.remove('shake-anim', 'animate-pulse');
+      btn.disabled = false;
+      btn.innerHTML = origTxt;
+
+      if(winRarity) {
+        const newId = await nextId(winRarity);
+        const g = {
+          id: newId, rarity: winRarity, hash: await sha256(`event:${type}:${Date.now()}:${S.user.id}`), nonce: 0,
+          generated_at: Date.now(), discord_user: S.user.global_name || S.user.username, discord_id: S.user.id,
+          network_size_at_generation: S.networkSize, owner: S.user.id, transfer_history: []
+        };
+        g.signature = await signGrain(g);
+        await db.grains.add(g);
+        sbUpsertGrain(g);
+        
+        spawnParticles(winRarity);
+        toast(`🎉 SUCESSO! Você obteve 1x ${RARITY[winRarity].emoji} ${RARITY[winRarity].label}!`, 'success', 6000);
+      } else {
+        toast(`💥 FALHOU! Seus grãos viraram cinzas...`, 'error', 4000);
+      }
+
+      window.evtSelections[type].clear();
+      render();
+    };
+
     function pageLogin() {
       return `<div class="min-h-screen flex items-center justify-center p-6">
     <div class="text-center max-w-md fade-in">
@@ -1549,6 +1805,7 @@
           case 'market': body = await pageMarket(); break;
           case 'transfer': body = await pageTransfer(); break;
           case 'ranking': body = await pageRanking(); break;
+          case 'event': body = await pageEvent(); break;
           case 'grain': body = await pageGrain(S.params.id); break;
           default: body = await pageInventory();
         }
