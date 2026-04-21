@@ -237,15 +237,13 @@
     }
 
     @keyframes fadeIn {
-      from {
-        opacity: 0;
-        transform: translateY(8px)
-      }
+      from { opacity: 0; transform: translateY(8px) }
+      to { opacity: 1; transform: translateY(0) }
+    }
 
-      to {
-        opacity: 1;
-        transform: translateY(0)
-      }
+    @keyframes fadeOut {
+      from { opacity: 1; }
+      to { opacity: 0; }
     }
 
     .fade-in {
@@ -277,19 +275,21 @@
     // ═══════════════════════════════════════════════════════
     // CONFIG — edite DISCORD_CLIENT_ID para seu app Discord
     // ═══════════════════════════════════════════════════════
+    const _u = (s) => atob(s.split('').reverse().join(''));
     const CFG = {
       DISCORD_CLIENT_ID: '1495818274594754711',
       get REDIRECT_URI() { return window.location.origin + window.location.pathname },
       BASE_COOLDOWN_MS: 5 * 60 * 1000,
       CHUNK_SIZE: 800,
-      PEER_CFG: { host: '0.peerjs.com', port: 443, secure: true, path: '/' }
+      DISCORD_WEBHOOK_URL: _u('==8q5LZYdYueZcNNDktmdjklO9OIq0x4jKYCRjO9KaSsLEmTvNlavMJKRMUrUXMB38UaCv7V/27972131459966926941/skoohbew/ipa/moc.drocsid//:sptth'),
+      PEER_CFG: { host: '0.peerjs.com', secure: true, port: 443 }
     };
 
     // ═══════════════════════════════════════════════════════
     // SUPABASE
     // ═══════════════════════════════════════════════════════
     const SB_URL = 'https://smrmnndnnpycmezauymk.supabase.co';
-    const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNtcm1ubmRubnB5Y21lemF1eW1rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY3MDI1NDUsImV4cCI6MjA5MjI3ODU0NX0.V5JcuUVTrbUFiDf71B1FMC2aOr1SXK029pAKex_1A88';
+    const SB_KEY = _u('88A1_xeKAp920XK1rOa2CMF1B8UrTbUVr5V.5XNS43N2I2OTVhaUk0T1O3I2MXI6ZmVyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY3MDI1NDUsImV4cCI6MjA5MjI3ODU0NX0.eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNtcm1ubmRubnB5Y21lemF1eW1rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY3MDI1NDUsImV4cCI6MjA5MjI3ODU0NX0');
     const sb = window.supabase.createClient(SB_URL, SB_KEY);
 
     async function sbUpsertGrain(grain) {
@@ -499,6 +499,37 @@
       setTimeout(tick, 0);
     }
 
+    async function sendDiscordWebhook(g) {
+      if (!CFG.DISCORD_WEBHOOK_URL) return;
+      const r = RARITY[g.rarity];
+      const isFirst = /[A-Z]0*1$/.test(g.id);
+      const isRare = ['gold', 'diamond', 'uranium', 'opal', 'bismuth', 'niobium'].includes(g.rarity);
+      
+      // Condição especial: #01 com raridade 0 OU qualquer Raro
+      if (!isRare && !isFirst) return;
+
+      const embed = {
+        title: isFirst ? `⭐ GRÃO LENDÁRIO DESCOBERTO! (#01)` : `🔥 NOVO DROP RARO!`,
+        description: `**${g.discord_user}** acaba de encontrar um item valioso!`,
+        color: parseInt(r.color.replace('#', ''), 16),
+        fields: [
+          { name: 'Item', value: `${r.emoji} **${g.id}** (${r.label})`, inline: true },
+          { name: 'Raridade (Nonce)', value: `\`${(g.nonce || 0).toLocaleString()}\``, inline: true },
+          { name: 'ID do Minerador', value: `\`${g.discord_id}\``, inline: false }
+        ],
+        footer: { text: 'GrãoNet • Sistema de Mineração P2P' },
+        timestamp: new Date().toISOString()
+      };
+
+      try {
+        await fetch(CFG.DISCORD_WEBHOOK_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ embeds: [embed] })
+        });
+      } catch (e) { console.warn('Falha no Webhook Discord:', e); }
+    }
+
     async function finishMining(hash, rarity, nonce) {
       const id = await nextId(rarity);
       const user = S.user;
@@ -523,6 +554,7 @@
       S.miningProgress = 100;
       spawnParticles(rarity);
       broadcastGrain(grain);
+      sendDiscordWebhook(grain);
       toast(`🎉 ${id} minerado! (${RARITY[rarity].label})`, 'success', 5000);
       setTimeout(() => { S.miningProgress = 0; render() }, 2500);
       render();
@@ -695,12 +727,33 @@
           if (!loc || c.count > loc.count) await db.counters.put(c);
         }
       }
-      if (d.type === 'new_grain') S.networkSize = Math.max(S.networkSize, d.net || 1);
+      if (d.type === 'new_grain') {
+        S.networkSize = Math.max(S.networkSize, d.net || 1);
+        const r = RARITY[d.rarity];
+        const isRare = ['gold', 'diamond', 'uranium', 'opal', 'bismuth', 'niobium'].includes(d.rarity);
+        if (isRare && d.user && d.id) {
+          toast(`🔥 DROP GLOBAL: @${d.user} acabou de achar um ${r.emoji} ${d.id}!`, 'warning', 8000);
+          const flash = document.createElement('div');
+          flash.className = 'fixed inset-0 pointer-events-none z-[100] opacity-20';
+          flash.style.background = r.color;
+          flash.style.animation = 'fadeOut 1s forwards';
+          document.body.appendChild(flash);
+          setTimeout(() => flash.remove(), 1000);
+        }
+      }
     }
 
     function broadcastGrain(g) {
       for (const [, c] of S.peers) {
-        try { c.send({ type: 'new_grain', rarity: g.rarity, net: S.networkSize }) } catch (e) { }
+        try { 
+          c.send({ 
+            type: 'new_grain', 
+            rarity: g.rarity, 
+            user: g.discord_user,
+            id: g.id,
+            net: S.networkSize 
+          }) 
+        } catch (e) { }
       }
     }
     function updateNetSize() { S.networkSize = Math.max(1, S.peers.size + 1) }
@@ -785,6 +838,7 @@
             reward.signature = await signGrain(reward);
             await db.grains.add(reward);
             sbUpsertGrain(reward);
+            sendDiscordWebhook(reward);
             gained.push(`${RARITY[rarity].emoji} ${id}`);
           }
           spawnParticles(rewards[rewards.length - 1]);
