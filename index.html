@@ -598,22 +598,36 @@ function startPresence(){
 // MERCADO
 // ═══════════════════════════════════════════════════════
 async function createListing(){
-  const grainId      = document.getElementById('mkt-grain')?.value;
-  const askingRarity = document.getElementById('mkt-asking-rarity')?.value;
-  const askingQty    = parseInt(document.getElementById('mkt-qty')?.value) || 1;
-  if(!grainId){ toast('Selecione um grão','error'); return }
+  const offerRarity   = document.getElementById('mkt-offer-rarity')?.value;
+  const offerQty      = parseInt(document.getElementById('mkt-offer-qty')?.value) || 1;
+  const offerMinNonce = parseInt(document.getElementById('mkt-offer-min-nonce')?.value) || 0;
 
-  const grain = await db.grains.where('id').equals(grainId).first();
-  if(!grain){ toast('Grão não encontrado','error'); return }
-  if(grain.rarity === askingRarity){ toast('Não pode trocar pelo mesmo minério','error'); return }
+  const askingRarity   = document.getElementById('mkt-asking-rarity')?.value;
+  const askingQty      = parseInt(document.getElementById('mkt-asking-qty')?.value) || 1;
+  const askingMinNonce = parseInt(document.getElementById('mkt-asking-min-nonce')?.value) || 0;
 
-  const { error } = await sb.from('market_listings').insert({
+  if(offerRarity === askingRarity){ toast('Não pode trocar pelo mesmo minério','error'); return }
+
+  const processGrains = await db.grains.where('owner').equals(S.user.id).toArray();
+  const availableToOffer = processGrains.filter(g => g.rarity === offerRarity && (g.nonce||0) >= offerMinNonce);
+
+  if(availableToOffer.length < offerQty){
+    toast(`Você não tem ${offerQty}x ${RARITY[offerRarity].label} com raridade mínima de ${offerMinNonce}`,'error');
+    return;
+  }
+
+  const offeredIds = availableToOffer.slice(0, offerQty).map(g => g.id);
+
+  const { error } = await sb.from('market_listings_v2').insert({
     seller_id:    S.user.id,
     seller_name:  S.user.global_name || S.user.username,
-    grain_id:     grainId,
-    grain_rarity: grain.rarity,
+    offered_grain_ids: offeredIds,
+    offering_rarity: offerRarity,
+    offering_qty: offerQty,
+    offering_min_nonce: offerMinNonce,
     asking_rarity: askingRarity,
-    asking_qty:   askingQty
+    asking_qty: askingQty,
+    asking_min_nonce: askingMinNonce
   });
   if(error){ toast('Erro ao criar oferta','error'); return }
   toast('Oferta publicada!','success');
@@ -621,7 +635,7 @@ async function createListing(){
 }
 
 async function cancelListing(id){
-  await sb.from('market_listings').update({ status:'cancelled' }).eq('id',id).eq('seller_id',S.user.id);
+  await sb.from('market_listings_v2').update({ status:'cancelled' }).eq('id',id).eq('seller_id',S.user.id);
   toast('Oferta cancelada','info');
   render();
 }
@@ -629,89 +643,82 @@ async function cancelListing(id){
 function openAccept(listing){ S.acceptingListing = listing; render() }
 function closeAccept(){ S.acceptingListing = null; render() }
 
-async function confirmTrade(listingId, paymentIds){
-  if(!paymentIds.length){ toast('Selecione os grãos de pagamento','error'); return }
-  const { data, error } = await sb.rpc('execute_trade',{
+async function confirmTrade(listingId){
+  const listing = S.acceptingListing;
+  const myGrains = await db.grains.where('owner').equals(S.user.id).toArray();
+  const payable = myGrains.filter(g => g.rarity === listing.asking_rarity && (g.nonce||0) >= listing.asking_min_nonce);
+  
+  if(payable.length < listing.asking_qty){
+    toast('Você não tem os requisitos para essa troca.','error');
+    return;
+  }
+  
+  const paymentIds = payable.slice(0, listing.asking_qty).map(g => g.id);
+
+  const { data, error } = await sb.rpc('execute_trade_v2',{
     p_listing_id: listingId,
     p_buyer_id: S.user.id,
     p_payment_grain_ids: paymentIds
   });
-  if(error || data?.error){ toast(`Erro: ${data?.error||error?.message}`,'error'); return }
+  if(error || (data && data.error)){ toast(`Erro: ${data?.error||error?.message}`,'error'); return }
 
-  // atualiza local: recebe grain, perde payments
-  const listing = S.acceptingListing;
-  const received = await sb.from('grains').select('*').eq('id', data.grain_id).single();
-  if(received.data){
-    const g = received.data;
-    const exists = await db.grains.where('id').equals(g.id).first();
-    if(exists) await db.grains.where('id').equals(g.id).modify({...g, owner: S.user.id});
-    else await db.grains.add({...g, owner: S.user.id});
+  const received_ids = data.received_grain_ids || [];
+  const { data: recGrains } = await sb.from('grains').select('*').in('id', received_ids);
+  if(recGrains){
+    for(const g of recGrains){
+      const exists = await db.grains.where('id').equals(g.id).first();
+      if(exists) await db.grains.where('id').equals(g.id).modify({...g, owner: S.user.id});
+      else await db.grains.add({...g, owner: S.user.id});
+    }
   }
+  
   for(const pid of paymentIds){
     await db.grains.where('id').equals(pid).modify({ owner: data.seller_id });
   }
 
   S.acceptingListing = null;
-  spawnParticles(listing.grain_rarity);
-  toast(`✅ Troca concluída! Você recebeu ${RARITY[listing.grain_rarity].emoji} ${listing.grain_id}`,'success',5000);
+  spawnParticles(listing.offering_rarity);
+  toast(`✅ Troca concluída! Você recebeu ${listing.offering_qty}x ${RARITY[listing.offering_rarity].emoji}`,'success',5000);
   render();
 }
 
 function listingCard(l, myGrains){
-  const gr = RARITY[l.grain_rarity] || {};
+  const or = RARITY[l.offering_rarity] || {};
   const ar = RARITY[l.asking_rarity] || {};
   const isAccepting = S.acceptingListing?.id === l.id;
-  const payable = myGrains.filter(g => g.rarity === l.asking_rarity);
+  const payable = myGrains.filter(g => g.rarity === l.asking_rarity && (g.nonce||0) >= l.asking_min_nonce);
   const canPay  = payable.length >= l.asking_qty;
 
-  return `<div class="card-${l.grain_rarity} rounded-lg p-4 ${isAccepting?'ring-2 ring-cyan-500':''}">
+  const offNonceStr = l.offering_min_nonce > 0 ? `> ${l.offering_min_nonce.toLocaleString()}` : 'Qualquer';
+  const askNonceStr = l.asking_min_nonce > 0 ? `> ${l.asking_min_nonce.toLocaleString()}` : 'Qualquer';
+
+  return `<div class="bg-gray-900 rounded-lg p-4 border ${isAccepting?'border-cyan-500':'border-gray-800'}" style="border-left-width: 4px; border-left-color: ${or.color}">
     <div class="flex items-center justify-between mb-3">
       <div>
-        <div class="text-xs text-gray-400 mb-1">${l.seller_name}</div>
-        <div class="font-bold text-sm" style="color:${gr.color}">${gr.emoji} ${l.grain_id}</div>
-        <div class="text-xs" style="color:${gr.color}">${gr.label}</div>
+        <div class="text-xs text-gray-400 mb-1">Vendedor: ${l.seller_name}</div>
+        <div class="font-bold text-sm" style="color:${or.color}">${l.offering_qty}× ${or.emoji} ${or.label}</div>
+        <div class="text-[10px] text-gray-500">Raridade Exigida: ${offNonceStr}</div>
       </div>
       <div class="text-right">
         <div class="text-xs text-gray-400 mb-1">quer receber</div>
-        <div class="font-bold text-sm" style="color:${ar.color}">${l.asking_qty}× ${ar.emoji}</div>
-        <div class="text-xs" style="color:${ar.color}">${ar.label}</div>
+        <div class="font-bold text-sm" style="color:${ar.color}">${l.asking_qty}× ${ar.emoji} ${ar.label}</div>
+        <div class="text-[10px] text-gray-500">Raridade Exigida: ${askNonceStr}</div>
       </div>
     </div>
     ${!isAccepting ? `
       <button onclick="openAccept(${JSON.stringify(l).replace(/"/g,'&quot;')})"
         class="w-full text-xs px-3 py-2 rounded transition-colors ${canPay?'bg-green-900 hover:bg-green-800 text-green-100':'bg-gray-800 text-gray-500 cursor-not-allowed'}"
         ${!canPay?'disabled':''}>
-        ${canPay?'🤝 Aceitar Troca':`Precisa ${l.asking_qty}× ${ar.emoji} (você tem ${payable.length})`}
+        ${canPay?'🤝 Aceitar Troca':`Faltam Grãos (você tem ${payable.length}/${l.asking_qty})`}
       </button>
     ` : `
-      <div class="text-xs text-gray-400 mb-2">Selecione ${l.asking_qty} ${ar.emoji} ${ar.label} para pagar:</div>
-      <div class="flex flex-wrap gap-1 mb-3 max-h-20 overflow-y-auto scrollbar-thin">
-        ${payable.map(g=>`<label class="cursor-pointer">
-          <input type="checkbox" class="pay-grain hidden" value="${g.id}">
-          <span class="px-2 py-0.5 rounded text-[10px] font-mono border cursor-pointer select-label"
-            style="color:${ar.color};border-color:${ar.color}40;background:${ar.color}10"
-            onclick="togglePayGrain(this)">${ar.emoji} ${g.id}</span>
-        </label>`).join('')}
-      </div>
+      <div class="text-xs text-gray-400 mb-2">Serão enviados automaticamente ${l.asking_qty} grãos ${ar.label} que cumprem a regra.</div>
       <div class="flex gap-2">
-        <button onclick="doConfirmTrade('${l.id}',${l.asking_qty})" class="flex-1 bg-green-900 hover:bg-green-800 text-xs px-3 py-2 rounded transition-colors">✓ Confirmar</button>
+        <button onclick="confirmTrade('${l.id}')" class="flex-1 bg-green-900 hover:bg-green-800 text-xs px-3 py-2 rounded transition-colors">✓ Executar Troca</button>
         <button onclick="closeAccept()" class="bg-gray-800 hover:bg-gray-700 text-xs px-3 py-2 rounded transition-colors">✕</button>
       </div>
     `}
   </div>`;
-}
-
-function togglePayGrain(el){
-  const inp = el.previousElementSibling;
-  inp.checked = !inp.checked;
-  el.style.background = inp.checked ? RARITY[el.style.color]?.color+'40' || '#ffffff30' : '';
-  el.style.fontWeight  = inp.checked ? 'bold' : 'normal';
-}
-
-function doConfirmTrade(listingId, qty){
-  const checked = [...document.querySelectorAll('.pay-grain:checked')].map(i=>i.value);
-  if(checked.length !== qty){ toast(`Selecione exatamente ${qty} grão(s)`,'warning'); return }
-  confirmTrade(listingId, checked);
 }
 
 async function syncLocalGrains(userId){
@@ -791,9 +798,17 @@ function toast(msg, type='info', dur=3000){
 }
 
 // ═══════════════════════════════════════════════════════
-// NAV
+// NAV & HISTÓRICO (Botão Voltar)
 // ═══════════════════════════════════════════════════════
 function go(page, params={}){ S.page=page; S.params=params; render(); window.scrollTo(0,0) }
+
+history.pushState(null, '', window.location.pathname);
+window.addEventListener('popstate', (e) => {
+  history.pushState(null, '', window.location.pathname);
+  if(!S.user) return;
+  const seq = { 'inventory': 'mine', 'mine': 'market', 'market': 'transfer', 'transfer': 'ranking', 'ranking': 'inventory' };
+  go(seq[S.page] || 'inventory');
+});
 
 // ═══════════════════════════════════════════════════════
 // HEADER
@@ -846,7 +861,7 @@ function grainCard(g, compact=false){
     </div>
     <div class="font-bold text-xs font-mono" style="color:${r.color}">${g.id}</div>
     <div class="text-[10px] text-gray-400">${r.label}</div>
-    ${!compact?`<div class="text-[9px] text-gray-600 mt-1 truncate">raridade: ${(g.nonce||0).toLocaleString()}</div>`:''}
+    ${!compact?`<div class="text-[9px] text-gray-600 mt-1 truncate">Raridade: ${(g.nonce||0).toLocaleString()}</div>`:''}
   </div>`;
 }
 
@@ -1091,46 +1106,69 @@ async function pageRanking(){
 
 async function pageMarket(){
   if(!S.user) return pageLogin();
-  const { data: listings } = await sb.from('market_listings').select('*').eq('status','active').order('created_at',{ascending:false});
+  const { data: listings } = await sb.from('market_listings_v2').select('*').eq('status','active').order('created_at',{ascending:false});
   const myGrains    = await db.grains.where('owner').equals(S.user.id).toArray();
   const myListings  = (listings||[]).filter(l=>l.seller_id===S.user.id);
   const allListings = (listings||[]).filter(l=>l.seller_id!==S.user.id);
 
   return `<div class="p-4 sm:p-6 max-w-4xl mx-auto">
     <h2 class="text-2xl font-bold mb-1">🛒 Mercado</h2>
-    <p class="text-gray-400 text-sm mb-5">Troque Grãos por outros Grãos diretamente com a rede.</p>
+    <p class="text-gray-400 text-sm mb-5">Troque Grãos baseados em raridade e quantidade com a rede.</p>
 
     <div class="bg-gray-900 rounded-lg p-4 mb-6">
       <h3 class="font-bold text-sm mb-3 text-cyan-400">+ Criar Oferta</h3>
-      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <div>
-          <label class="text-xs text-gray-400 block mb-1">Grão que você oferece</label>
-          <select id="mkt-grain" class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-xs focus:border-cyan-500 focus:outline-none">
-            <option value="">-- selecione --</option>
-            ${myGrains.map(g=>`<option value="${g.id}">${RARITY[g.rarity]?.emoji} ${g.id} (${RARITY[g.rarity]?.label})</option>`).join('')}
-          </select>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <!-- VENDO -->
+        <div class="border border-gray-800 p-3 rounded">
+          <div class="text-xs text-gray-400 mb-2 font-bold uppercase">Eu ofereço</div>
+          <div class="grid grid-cols-2 gap-2 mb-2">
+            <div>
+              <label class="text-[10px] text-gray-500 block mb-1">Tipo</label>
+              <select id="mkt-offer-rarity" class="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-xs focus:border-cyan-500 outline-none">
+                ${ORDER.map(r=>`<option value="${r}">${RARITY[r].emoji} ${RARITY[r].label}</option>`).join('')}
+              </select>
+            </div>
+            <div>
+              <label class="text-[10px] text-gray-500 block mb-1">Quantidade</label>
+              <input type="number" id="mkt-offer-qty" min="1" value="1" class="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-xs focus:border-cyan-500 outline-none">
+            </div>
+          </div>
+          <div>
+            <label class="text-[10px] text-gray-500 block mb-1">Raridade Mínima (Opcional, 0 = qualquer)</label>
+            <input type="number" id="mkt-offer-min-nonce" value="0" class="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-xs focus:border-cyan-500 outline-none">
+          </div>
         </div>
-        <div>
-          <label class="text-xs text-gray-400 block mb-1">Quer receber</label>
-          <select id="mkt-asking-rarity" class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-xs focus:border-cyan-500 focus:outline-none">
-            ${ORDER.map(r=>`<option value="${r}">${RARITY[r].emoji} ${RARITY[r].label}</option>`).join('')}
-          </select>
-        </div>
-        <div>
-          <label class="text-xs text-gray-400 block mb-1">Quantidade</label>
-          <input type="number" id="mkt-qty" min="1" max="999" value="1"
-            class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-xs focus:border-cyan-500 focus:outline-none">
+
+        <!-- RECEBO -->
+        <div class="border border-gray-800 p-3 rounded">
+          <div class="text-xs text-gray-400 mb-2 font-bold uppercase">Quero receber</div>
+          <div class="grid grid-cols-2 gap-2 mb-2">
+            <div>
+              <label class="text-[10px] text-gray-500 block mb-1">Tipo</label>
+              <select id="mkt-asking-rarity" class="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-xs focus:border-cyan-500 outline-none">
+                ${ORDER.map(r=>`<option value="${r}">${RARITY[r].emoji} ${RARITY[r].label}</option>`).join('')}
+              </select>
+            </div>
+            <div>
+              <label class="text-[10px] text-gray-500 block mb-1">Quantidade</label>
+              <input type="number" id="mkt-asking-qty" min="1" value="1" class="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-xs focus:border-cyan-500 outline-none">
+            </div>
+          </div>
+          <div>
+            <label class="text-[10px] text-gray-500 block mb-1">Raridade Mínima (Opcional, 0 = qualquer)</label>
+            <input type="number" id="mkt-asking-min-nonce" value="0" class="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-xs focus:border-cyan-500 outline-none">
+          </div>
         </div>
       </div>
-      <button onclick="createListing()" class="mt-3 bg-cyan-800 hover:bg-cyan-700 px-4 py-2 rounded text-xs font-medium transition-colors">Publicar Oferta</button>
+      <button onclick="createListing()" class="w-full mt-3 bg-cyan-800 hover:bg-cyan-700 px-4 py-2 rounded text-xs font-medium transition-colors">Publicar Oferta</button>
     </div>
 
     ${myListings.length>0?`<div class="mb-6">
-      <h3 class="font-bold text-sm mb-3 text-gray-300">Minhas Ofertas (${myListings.length})</h3>
+      <h3 class="font-bold text-sm mb-3 text-gray-300">Minhas Ofertas Ativas (${myListings.length})</h3>
       <div class="space-y-2">
         ${myListings.map(l=>`<div class="bg-gray-900 rounded-lg p-3 flex items-center justify-between text-sm">
           <div class="flex items-center gap-3">
-            <span style="color:${RARITY[l.grain_rarity]?.color}">${RARITY[l.grain_rarity]?.emoji} ${l.grain_id}</span>
+            <span style="color:${RARITY[l.offering_rarity]?.color}">${l.offering_qty}× ${RARITY[l.offering_rarity]?.emoji} ${RARITY[l.offering_rarity]?.label}</span>
             <span class="text-gray-500">→</span>
             <span style="color:${RARITY[l.asking_rarity]?.color}">${l.asking_qty}× ${RARITY[l.asking_rarity]?.emoji} ${RARITY[l.asking_rarity]?.label}</span>
           </div>
@@ -1143,7 +1181,7 @@ async function pageMarket(){
     ${allListings.length===0?`<div class="text-center py-12 text-gray-600 text-sm">
       <div class="text-4xl mb-3">🌾</div>
       Nenhuma oferta no momento
-    </div>`:`<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+    </div>`:`<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
       ${allListings.map(l=>listingCard(l,myGrains)).join('')}
     </div>`}
   </div>`;
