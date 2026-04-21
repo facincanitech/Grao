@@ -409,7 +409,7 @@ async function receivePkg(json){
   try{ pkg = JSON.parse(json) }
   catch(e){ toast('JSON inválido','error'); return false }
   if(pkg.type !== 'graonet_transfer'){ toast('Tipo inválido','error'); return false }
-  if(!S.user || pkg.to !== S.user.id){ toast('Este pacote não é para você','error'); return false }
+  if(!S.user || (pkg.to !== S.user.id && pkg.to !== 'ANYONE')){ toast('Este pacote não é para você','error'); return false }
 
   const raw  = `${pkg.grain.id}:${pkg.from}:${pkg.to}:${pkg.timestamp}:${pkg.nonce}`;
   const exp  = await sha256(raw);
@@ -1010,9 +1010,9 @@ async function pageTransfer(){
     <p class="text-gray-400 text-sm mb-5">Troque Grãos com outros usuários via pacotes JSON assinados.</p>
     <div class="grid gap-4 md:grid-cols-2 mb-6">
       <div class="bg-gray-900 rounded-lg p-4">
-        <h3 class="font-bold mb-3 text-cyan-400 text-sm">📤 Enviar Grão</h3>
-        <label class="text-xs text-gray-400 block mb-1">Discord ID do destinatário</label>
-        <input type="text" id="tr-target" placeholder="123456789012345678"
+        <h3 class="font-bold mb-3 text-cyan-400 text-sm">📤 Enviar / Resgatar Grão</h3>
+        <label class="text-xs text-gray-400 block mb-1">Destinatário (Deixe em branco para Criar Código de Resgate Público)</label>
+        <input type="text" id="tr-target" placeholder="ID do Discord do Amigo ou vazio..."
           class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:border-cyan-500 focus:outline-none mb-3"
           value="${S.transferTarget}" oninput="S.transferTarget=this.value">
         <label class="text-xs text-gray-400 block mb-1">Selecionar Grão</label>
@@ -1267,18 +1267,25 @@ function pageLogin(){
 function setFilter(r){ S.filter=r; render() }
 
 async function doGenerateTransfer(){
-  const target = document.getElementById('tr-target')?.value?.trim();
+  let target = document.getElementById('tr-target')?.value?.trim();
+  if(!target) target = 'ANYONE';
   const grain  = document.getElementById('tr-grain')?.value;
-  if(!target){ toast('Informe o Discord ID do destinatário','error'); return }
   if(!grain) { toast('Selecione um grão','error'); return }
   if(target === S.user.id){ toast('Não pode transferir para si mesmo','error'); return }
   const pkg = await generateTransferPkg(grain, target);
   if(pkg){
-    await db.grains.where('id').equals(grain).modify({ owner: '__transferred__' });
+    const outStatus = target === 'ANYONE' ? '__exported__' : '__transferred__';
+    await db.grains.where('id').equals(grain).modify({ owner: outStatus });
+    await sb.from('grains').update({ owner: outStatus }).eq('id', grain);
+
     const out = document.getElementById('tr-out');
     const ta  = document.getElementById('tr-pkg');
     if(out && ta){ out.classList.remove('hidden'); ta.value=pkg }
-    toast('Pacote gerado! Copie e envie ao destinatário.','success',5000);
+    if(target === 'ANYONE'){
+      toast('Código de Resgate Livre Gerado! Guarde com cuidado.','warning',6000);
+    } else {
+      toast('Pacote gerado! Copie e envie ao destinatário.','success',5000);
+    }
     // Refresh select
     const sel = document.getElementById('tr-grain');
     if(sel){ const op=sel.querySelector(`[value="${grain}"]`); if(op) op.remove() }
