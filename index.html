@@ -721,16 +721,13 @@ async function pageInventory(){
   });
 
   return `<div class="p-4 sm:p-6">
-    <div class="flex flex-wrap gap-2 mb-4">
-      ${ORDER.map(r=>`<div class="flex items-center gap-1 bg-gray-900 px-3 py-1 rounded-full text-xs">
-        <span>${RARITY[r].emoji}</span>
-        <span style="color:${RARITY[r].color}">${RARITY[r].label}</span>
-        <span class="text-gray-400">×${counts[r]}</span>
-      </div>`).join('')}
-    </div>
     <div class="flex flex-wrap gap-2 mb-5">
-      <button onclick="setFilter('all')" class="px-3 py-1 rounded text-xs transition-colors ${S.filter==='all'?'bg-gray-600 text-white':'bg-gray-900 hover:bg-gray-800 text-gray-400'}">Todos (${all.length})</button>
-      ${ORDER.map(r=>`<button onclick="setFilter('${r}')" class="px-3 py-1 rounded text-xs transition-colors ${S.filter===r?'bg-gray-600':'bg-gray-900 hover:bg-gray-800'}" style="${S.filter===r?`color:${RARITY[r].color}`:''}">
+      <button onclick="setFilter('all')" class="px-3 py-1 rounded text-xs font-medium transition-colors border ${S.filter==='all'?'bg-gray-700 border-gray-500 text-white':'bg-gray-900 border-gray-800 text-gray-400 hover:bg-gray-800'}">
+        Todos (${all.length})
+      </button>
+      ${ORDER.map(r=>`<button onclick="setFilter('${r}')"
+        class="px-3 py-1 rounded text-xs font-medium transition-colors border"
+        style="color:${RARITY[r].color};border-color:${S.filter===r?RARITY[r].color:RARITY[r].color+'30'};background:${S.filter===r?RARITY[r].color+'25':'transparent'}">
         ${RARITY[r].emoji} ${RARITY[r].label} (${counts[r]})
       </button>`).join('')}
     </div>
