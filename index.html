@@ -747,41 +747,7 @@ async function syncFromSupabase(userId){
     }
   }catch(e){}
 }
-
-// ═══════════════════════════════════════════════════════
-// EXPORT / IMPORT
-// ═══════════════════════════════════════════════════════
-async function exportBackup(){
-  const grains   = await db.grains.where('owner').equals(S.user.id).toArray();
-  const counters = await db.counters.toArray();
-  const data = JSON.stringify({ type:'graonet_backup', version:'1.0', user:S.user, exported_at:Date.now(), grains, counters }, null, 2);
-  const a = Object.assign(document.createElement('a'),{
-    href: URL.createObjectURL(new Blob([data],{type:'application/json'})),
-    download: `graonet-backup-${Date.now()}.json`
-  });
-  a.click();
-  toast('Backup exportado!','success');
-}
-
-async function importBackup(file){
-  if(!file) return;
-  let bk;
-  try{ bk = JSON.parse(await file.text()) }
-  catch(e){ toast('Arquivo inválido','error'); return }
-  if(bk.type !== 'graonet_backup'){ toast('Formato inválido','error'); return }
-  let added=0;
-  for(const g of bk.grains||[]){
-    const ex = await db.grains.where('id').equals(g.id).first();
-    if(!ex){ await db.grains.add(g); added++ }
-  }
-  for(const c of bk.counters||[]){
-    const loc = await db.counters.get(c.rarity);
-    if(!loc || c.count > loc.count) await db.counters.put(c);
-  }
-  toast(`Importado! ${added} grão(s) novo(s) adicionado(s)`,'success',5000);
-  render();
-}
-
+ 
 // ═══════════════════════════════════════════════════════
 // TOASTS
 // ═══════════════════════════════════════════════════════
@@ -898,13 +864,6 @@ async function pageInventory(){
       <div class="text-lg mb-2">Nenhum grão aqui</div>
       <button onclick="go('mine')" class="text-cyan-400 hover:underline text-sm">Ir para Mineração →</button>
     </div>`:`<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">${sorted.map(g=>grainCard(g)).join('')}</div>`}
-    <div class="mt-8 flex flex-wrap gap-3">
-      <button onclick="exportBackup()" class="text-xs bg-gray-800 hover:bg-gray-700 px-4 py-2 rounded transition-colors">📥 Exportar Backup</button>
-      <label class="text-xs bg-gray-800 hover:bg-gray-700 px-4 py-2 rounded cursor-pointer transition-colors">
-        📤 Importar Backup
-        <input type="file" accept=".json" onchange="importBackup(this.files[0])" class="hidden">
-      </label>
-    </div>
   </div>`;
 }
 
