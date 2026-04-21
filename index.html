@@ -1039,39 +1039,52 @@ async function pageRanking(){
   if(!all.length) all = await db.grains.toArray();
 
   const map = {};
+  const emptyC = () => Object.fromEntries(ORDER.map(r=>[r,0]));
   for(const g of all){
     const uid = g.owner || g.discord_id || 'unknown';
-    if(!map[uid]) map[uid] = { name: g.discord_user||uid, counts:{diamond:0,gold:0,silver:0,copper:0,brass:0} };
-    if(g.rarity) map[uid].counts[g.rarity]++;
+    if(!map[uid]) map[uid] = { name: g.discord_user||uid, counts: emptyC() };
+    if(g.rarity && map[uid].counts[g.rarity] !== undefined) map[uid].counts[g.rarity]++;
   }
-  const score = u => u.counts.diamond*1000+u.counts.gold*100+u.counts.silver*10+u.counts.copper*2+u.counts.brass;
+  const SCORES = { niobium:100000, bismuth:10000, opal:1000, uranium:500, diamond:100, gold:20, silver:5, copper:2, brass:1 };
+  const score = u => ORDER.reduce((s,r)=> s + (u.counts[r]||0)*SCORES[r], 0);
   const users = Object.entries(map).sort((a,b)=>score(b[1])-score(a[1]));
-  return `<div class="p-4 sm:p-6 max-w-3xl mx-auto">
+
+  return `<div class="p-4 sm:p-6 max-w-5xl mx-auto">
     <h2 class="text-2xl font-bold mb-1">🏆 Ranking</h2>
     <p class="text-gray-400 text-sm mb-2">Top holders de toda a rede GrãoNet.</p>
     <div class="text-[10px] text-gray-600 mb-4">${source==='global'?`✅ Dados globais · ${all.length} grão(s) · ${users.length} jogador(es)`:'⚠️ Dados locais (offline)'}</div>
-    <div class="bg-gray-900 rounded-lg overflow-hidden">
-      <div class="grid grid-cols-8 gap-1 px-4 py-2 text-[10px] text-gray-600 border-b border-gray-800">
-        <div class="col-span-3">Usuário</div>
-        ${ORDER.map(r=>`<div class="text-center">${RARITY[r].emoji}</div>`).join('')}
-        <div class="text-right">Pts</div>
-      </div>
-      ${users.length===0?`<div class="text-center py-8 text-gray-600 text-sm">Nenhum grão minerado ainda</div>`
-        :users.slice(0,50).map(([uid,d],i)=>{
-          const sc  = score(d);
-          const me  = uid===S.user?.id;
-          const med = i===0?'🥇':i===1?'🥈':i===2?'🥉':`#${i+1}`;
-          return `<div class="grid grid-cols-8 gap-1 px-4 py-2 text-xs border-b border-gray-800 hover:bg-gray-800/50 transition-colors ${me?'bg-gray-800/30':''}">
-            <div class="col-span-3 flex items-center gap-1 min-w-0">
-              <span class="shrink-0">${med}</span>
-              <span class="${me?'text-cyan-400 font-bold':'text-gray-300'} truncate text-[11px]">${d.name}</span>
-            </div>
-            ${ORDER.map(r=>`<div class="text-center" style="color:${RARITY[r].color}">${d.counts[r]||'–'}</div>`).join('')}
-            <div class="text-right text-yellow-400 font-bold">${sc.toLocaleString()}</div>
-          </div>`;
-        }).join('')}
+    <div class="bg-gray-900 rounded-lg overflow-x-auto scrollbar-thin">
+      <table class="w-full text-xs min-w-[700px]">
+        <thead>
+          <tr class="border-b border-gray-800 text-[10px] text-gray-500">
+            <th class="text-left px-4 py-2 w-40">Usuário</th>
+            ${ORDER.map(r=>`<th class="text-center py-2 px-1" style="color:${RARITY[r].color}">${RARITY[r].emoji}<br><span class="text-[9px]">${RARITY[r].label}</span></th>`).join('')}
+            <th class="text-right px-4 py-2">Pts</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${users.length===0?`<tr><td colspan="${ORDER.length+2}" class="text-center py-8 text-gray-600">Nenhum grão minerado ainda</td></tr>`
+            :users.slice(0,50).map(([uid,d],i)=>{
+              const sc  = score(d);
+              const me  = uid===S.user?.id;
+              const med = i===0?'🥇':i===1?'🥈':i===2?'🥉':`#${i+1}`;
+              return `<tr class="border-b border-gray-800/50 hover:bg-gray-800/40 transition-colors ${me?'bg-gray-800/30':''}">
+                <td class="px-4 py-2">
+                  <span class="mr-1">${med}</span>
+                  <span class="${me?'text-cyan-400 font-bold':'text-gray-300'}">${d.name}</span>
+                </td>
+                ${ORDER.map(r=>`<td class="text-center py-2 px-1 font-mono" style="color:${RARITY[r].color}">
+                  ${d.counts[r]?d.counts[r]:'<span class="text-gray-700">–</span>'}
+                </td>`).join('')}
+                <td class="text-right px-4 py-2 text-yellow-400 font-bold">${sc.toLocaleString()}</td>
+              </tr>`;
+            }).join('')}
+        </tbody>
+      </table>
     </div>
-    <div class="mt-3 text-[10px] text-gray-600 text-center">💎×1000 + 🟡×100 + ⚪×10 + 🟤×2 + 🔶×1</div>
+    <div class="mt-3 text-[10px] text-gray-600 text-center flex flex-wrap justify-center gap-2">
+      ${ORDER.map(r=>`<span style="color:${RARITY[r].color}">${RARITY[r].emoji}×${SCORES[r].toLocaleString()}</span>`).join('<span class="text-gray-700">+</span>')}
+    </div>
   </div>`;
 }
 
