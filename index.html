@@ -275,13 +275,13 @@
     // ═══════════════════════════════════════════════════════
     // CONFIG — edite DISCORD_CLIENT_ID para seu app Discord
     // ═══════════════════════════════════════════════════════
-    const _u = (s) => atob(s.split('').reverse().join(''));
+    const _u = (s) => s.split('').reverse().join('');
     const CFG = {
       DISCORD_CLIENT_ID: '1495818274594754711',
       get REDIRECT_URI() { return window.location.origin + window.location.pathname },
       BASE_COOLDOWN_MS: 5 * 60 * 1000,
       CHUNK_SIZE: 800,
-      DISCORD_WEBHOOK_URL: _u('==8q5LZYdYueZcNNDktmdjklO9OIq0x4jKYCRjO9KaSsLEmTvNlavMJKRMUrUXMB38UaCv7V/27972131459966926941/skoohbew/ipa/moc.drocsid//:sptth'),
+      DISCORD_WEBHOOK_URL: _u('8q5LZYdYueZcNNDktmdjklO9OIq0x4jKYCRjO9KaSsLEmTvNlavMJKRMUrUXMB38UaCv7V/27972131459966926941/skoohbew/ipa/moc.drocsid//:sptth'),
       PEER_CFG: { host: '0.peerjs.com', secure: true, port: 443 }
     };
 
@@ -289,7 +289,7 @@
     // SUPABASE
     // ═══════════════════════════════════════════════════════
     const SB_URL = 'https://smrmnndnnpycmezauymk.supabase.co';
-    const SB_KEY = _u('88A1_xeKAp920XK1rOa2CMF1B8UrTbUVr5V.5XNS43N2I2OTVhaUk0T1O3I2MXI6ZmVyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY3MDI1NDUsImV4cCI6MjA5MjI3ODU0NX0.eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNtcm1ubmRubnB5Y21lemF1eW1rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY3MDI1NDUsImV4cCI6MjA5MjI3ODU0NX0');
+    const SB_KEY = _u('88A1_xeKAp920XK1rOa2CMF1B8UrTbUVr5V.5XNS43N2I2OTVhaUk0T1O3I2MXI6ZmVyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY3MDI1NDUsImV4cCI6MjA5MjI3ODU0NX0.V5JcuUVTrbUFiDf71B1FMC2aOr1SXK029pAKex_1A88');
     const sb = window.supabase.createClient(SB_URL, SB_KEY);
 
     async function sbUpsertGrain(grain) {
