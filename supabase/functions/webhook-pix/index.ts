@@ -16,6 +16,7 @@ serve(async (req: Request) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     )
 
+    // 1. Verificar se é Assinatura VIP
     const { data: payment } = await supabase
       .from('pagamentos_pix')
       .select('*')
@@ -39,9 +40,61 @@ serve(async (req: Request) => {
         event: 'vip_activated',
         payload: { userId: payment.user_id }
       })
+      return new Response('ok: vip', { status: 200 })
     }
 
-    return new Response('ok', { status: 200 })
+    // 2. Verificar se é Venda P2P
+    const { data: listing } = await supabase
+      .from('market_listings_brl')
+      .select('*')
+      .eq('txid', txid)
+      .eq('status', 'pending_payment')
+      .single()
+
+    if (listing) {
+      // A. Transferir o item para o comprador
+      const { error: errUpdateGrain } = await supabase
+        .from('grains')
+        .update({ 
+          owner: listing.buyer_id, 
+          lock_trade: false          
+        })
+        .eq('id', listing.grain_id)
+
+      if (errUpdateGrain) throw errUpdateGrain
+
+      // B. Marcar o anúncio como concluído
+      await supabase
+        .from('market_listings_brl')
+        .update({ 
+          status: 'sold',
+          sold_at: new Date().toISOString()
+        })
+        .eq('id', listing.id)
+
+      // C. Creditar o saldo ao vendedor (valor - taxa de 10%)
+      const valorLiquido = Number(listing.price) * 0.90
+      await supabase.rpc('increment_user_balance', { 
+        uid: listing.seller_id, 
+        amount: valorLiquido 
+      })
+
+      // D. Notificar via Realtime (opcional, mas bom para UX)
+      await supabase.channel('global').send({
+        type: 'broadcast',
+        event: 'p2p_sale_confirmed',
+        payload: { 
+          listingId: listing.id,
+          grainId: listing.grain_id,
+          sellerId: listing.seller_id,
+          buyerId: listing.buyer_id
+        }
+      })
+
+      return new Response('ok: p2p', { status: 200 })
+    }
+
+    return new Response('ok: no action', { status: 200 })
   } catch (error: any) {
     console.error(error)
     return new Response(error.message, { status: 400 })

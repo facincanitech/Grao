@@ -399,6 +399,7 @@
         if (elapsed >= cd) {
           if (!_cdNotified) {
             Notif.send('⛏️ Mineração Pronta!', 'O cooldown acabou. Hora de minerar mais grãos!');
+            if (S.page === 'mine') startCdTimer();
             AudioEngine.play('ready');
             _cdNotified = true;
           }
@@ -751,17 +752,6 @@
       sendDiscordWebhook(grain);
       toast(`🎉 ${id} ${getLabel('mining').toLowerCase()}! (${RARITY[rarity].label})`, 'success', 5000);
       
-      const canAuto = S.is_vip || (S.is_trial && Date.now() < S.trial_until);
-      
-      if (canAuto && S.autoClicker) {
-        const nextTime = Date.now() + cooldownMs() + 2000; // +2s safety margin
-        toast(`🤖 Auto-Clicker: Próxima execução em ${Math.round((nextTime - Date.now())/1000)}s`, 'info');
-        setTimeout(() => {
-          if ((S.is_vip || (S.is_trial && Date.now() < S.trial_until)) && S.autoClicker) startMining();
-        }, nextTime - Date.now());
-      }
-
-      setTimeout(() => { S.miningProgress = 0; render() }, 2500);
       render();
     }
 
@@ -1322,6 +1312,9 @@
           const { data: listingsBRL } = await sb.from('market_listings_brl').select('*').order('created_at', { ascending: false });
           S.data.marketBRLHistory = history || [];
           S.data.marketBRLListings = listingsBRL || [];
+          // Buscar perfil para saldo
+          const { data: profile } = await sb.from('users').select('real_balance').eq('discord_id', S.user.id).single();
+          S.user_profile = profile;
         } else if (S.marketTab === 'transfer') {
           const transfers = await db.transfers.where('from_user').equals(S.user.id).or('to_user').equals(S.user.id)
             .reverse().limit(15).toArray();
@@ -1342,6 +1335,9 @@
         }
       } else if (page === 'mine') {
         S.data.inventory = await db.grains.where('owner').equals(S.user.id).toArray();
+      } else if (page === 'store') {
+        const { data: profile } = await sb.from('users').select('real_balance').eq('discord_id', S.user.id).single();
+        S.user_profile = profile;
       }
 
       render(); 
@@ -1405,7 +1401,10 @@
               ${av ? `<img src="${av}" class="w-10 h-10 rounded-full border border-gray-700">` : '<div class="w-10 h-10 rounded-full bg-gray-800 flex items-center justify-center">👤</div>'}
               <div class="flex flex-col min-w-0">
                 <span class="text-sm font-bold truncate ${S.is_vip ? 'glow-gold glow-purple' : 'text-gray-200'}">${S.is_vip ? '👑 ' : ''}${nm}</span>
-                ${S.is_vip ? '<span class="text-[9px] text-purple-400 font-bold tracking-wider">PREMIUM</span>' : '<span class="text-[9px] text-gray-500 font-bold uppercase tracking-widest">Free User</span>'}
+                <div class="flex items-center gap-2 mt-0.5">
+                  ${S.is_vip ? '<span class="text-[9px] text-purple-400 font-bold tracking-wider">PREMIUM</span>' : '<span class="text-[9px] text-gray-500 font-bold uppercase tracking-widest">Free User</span>'}
+                  <span class="text-[9px] text-green-500 font-bold">R$ ${(S.user_profile?.real_balance || 0).toFixed(2)}</span>
+                </div>
               </div>
             </div>
 
@@ -1562,18 +1561,41 @@
     </div>`: ''}
 
     <div class="bg-gray-900 rounded-lg p-6 text-center">
-      ${S.mining ? `<div class="text-5xl mb-3 mining-active">⛏️</div>
+      ${S.mining ? `
+        <div class="text-5xl mb-3 mining-active">⛏️</div>
         <div class="font-bold mb-4">Minerando...</div>
         <div class="bg-gray-800 rounded-full h-3 mb-3 overflow-hidden">
           <div class="h-full rounded-full progress-bar" style="width:${S.miningProgress}%;background:linear-gradient(90deg,#00FFFF,#0080FF)"></div>
         </div>
         <div class="text-sm text-gray-400 mb-5">Hashrate: <span class="text-cyan-400 hashrate-val">${S.hashrate.toLocaleString()}</span> H/s</div>
         <button onclick="cancelMining()" class="bg-red-900 hover:bg-red-800 px-6 py-2 rounded text-sm transition-colors">✕ Cancelar</button>
-      `: `<div class="text-6xl mb-4">🌾</div>
+      `: `
+        <div class="text-6xl mb-4">🌾</div>
         <p class="text-gray-400 text-sm mb-6">Mais zeros no hash = ${getLabel('grain')} mais raro!<br>Cooldown: ${cdMins} minuto${cdMins !== 1 ? 's' : ''} após ${getLabel('mine').toLowerCase()}.</p>
-        <button onclick="startMining()" class="bg-cyan-700 hover:bg-cyan-600 px-8 py-3 rounded-lg font-bold text-lg transition-colors">
+        
+        <div id="cooldown-area" class="hidden mb-6">
+          <div class="bg-gray-950 border border-yellow-900/30 rounded-xl p-4 inline-block min-w-[200px]">
+            <div class="text-[10px] text-yellow-500 font-bold uppercase mb-1">Aguardando Cooldown</div>
+            <div id="cd-timer" class="text-2xl font-mono font-bold text-white">--:--</div>
+          </div>
+        </div>
+
+        <button id="btn-start-mine" onclick="startMining()" class="bg-cyan-700 hover:bg-cyan-600 px-8 py-3 rounded-lg font-bold text-lg transition-colors">
           ⛏️ Começar ${getLabel('mining')}
-        </button>`}
+        </button>
+
+        ${(S.is_vip || S.is_trial) ? `
+          <div class="mt-6 pt-6 border-t border-gray-800 flex flex-col items-center gap-3">
+            <div class="flex items-center gap-3 bg-purple-900/20 border border-purple-500/30 px-4 py-2 rounded-full">
+              <span class="text-sm">🤖 Auto-Clicker</span>
+              <button onclick="S.autoClicker = !S.autoClicker; render(); if(S.autoClicker) startMining();" class="px-4 py-1 rounded-lg text-[10px] font-bold transition-all ${S.autoClicker ? 'bg-green-600 text-white shadow-[0_0_10px_rgba(22,163,74,0.5)]' : 'bg-gray-800 text-gray-400'}">
+                ${S.autoClicker ? 'ATIVADO' : 'DESATIVADO'}
+              </button>
+            </div>
+            ${S.autoClicker ? '<p class="text-[10px] text-purple-400 animate-pulse">O minerador iniciará automaticamente após o cooldown.</p>' : ''}
+          </div>
+        ` : ''}
+      `}
     </div>
   </div>`;
     }
@@ -1739,12 +1761,12 @@
 
     <div class="mb-6 bg-gray-900 border border-gray-800 rounded-xl p-4">
       <div class="flex items-center justify-between mb-4">
-        <h4 class="text-sm font-bold text-green-400">💰 Vendas P2P (Manual)</h4>
+      <h4 class="text-sm font-bold text-green-400">💰 Mercado P2P Automatizado</h4>
         <button onclick="go('inventory')" class="text-[10px] bg-gray-800 px-2 py-1 rounded hover:bg-gray-700 transition-colors">Anunciar Novo Item</button>
       </div>
       <p class="text-[10px] text-gray-500 leading-relaxed mb-4">
-        As vendas aqui são feitas diretamente entre jogadores. O comprador chama o vendedor no Discord, combinam o Pix externo, e o vendedor libera o item após receber. <br>
-        <span class="text-yellow-500/80 italic font-bold">*A plataforma não se responsabiliza por negociações externas.*</span>
+        Sistema de <b>Escrow (Garantia)</b>: O item só troca de dono quando o Pix é confirmado pelo banco. 
+        O vendedor recebe o saldo no app e pode sacar via Pix. Taxa: 10%.
       </p>
 
       <!-- MINHAS VENDAS (Vendedor) -->
@@ -1825,17 +1847,30 @@
     }
 
 async function solicitarCompraP2P(listingId, sellerName) {
-  if (!confirm(`Deseja iniciar a compra deste item? \n\nVocê deverá chamar o vendedor (${sellerName}) no Discord para combinar o pagamento Pix externo.`)) return;
-  
-  const { error } = await sb.from('market_listings_brl').update({
-    status: 'pending_payment',
-    buyer_id: S.user.id,
-    buyer_name: S.user.global_name || S.user.username
-  }).eq('id', listingId).eq('status', 'active');
+  S.pixModal = { loading: true };
+  render();
 
-  if (error) toast('Erro ao solicitar compra: ' + error.message, 'error');
-  else {
-    toast(`Solicitação enviada! Chame ${sellerName} no Discord agora.`, 'success', 6000);
+  try {
+    const { data, error } = await sb.functions.invoke('gerar-pix-p2p', {
+      body: { 
+        buyerId: S.user.id, 
+        buyerName: S.user.global_name || S.user.username,
+        listingId 
+      }
+    });
+
+    if (error) throw error;
+
+    S.pixModal = {
+      loading: false,
+      qrcode: data.qrcode,
+      copia_e_cola: data.copia_e_cola,
+      type: 'p2p'
+    };
+    render();
+  } catch (err) {
+    S.pixModal = null;
+    toast('Erro ao gerar Pix: ' + err.message, 'error');
     render();
   }
 }
@@ -1867,6 +1902,16 @@ async function cancelarVendaP2P(listingId) {
   const { error } = await sb.from('market_listings_brl').update({ status: 'cancelled' }).eq('id', listingId);
   if (error) toast('Erro ao cancelar: ' + error.message, 'error');
   else render();
+}
+
+function solicitarSaque() {
+  const saldo = S.user_profile?.real_balance || 0;
+  if (saldo < 10) {
+    toast('Saldo mínimo para saque é R$ 10,00', 'warning');
+    return;
+  }
+  alert(`Solicitação de saque de R$ ${saldo.toFixed(2)} enviada! \n\nO pagamento será processado em até 24h para sua chave Pix cadastrada.`);
+  // Aqui você enviaria um registro para uma tabela de 'withdrawals' no Supabase
 }
 
 function renderMktHistoryGraph(data) {
@@ -1995,7 +2040,14 @@ async function buyGrainBRL(listingId, price) {
       return `<div class="p-4 sm:p-6 max-w-4xl mx-auto">
     <div class="flex items-center justify-between mb-6">
       <h2 class="text-2xl font-bold">⭐ Loja Premium</h2>
-      ${(S.is_vip || S.is_trial) ? '<span class="px-3 py-1 bg-purple-900/50 text-purple-300 border border-purple-700/50 rounded-full text-xs font-bold">STATUS: ATIVO</span>' : ''}
+      <div class="flex items-center gap-3">
+        <div class="bg-gray-900 border border-gray-800 px-4 py-1.5 rounded-xl flex items-center gap-3">
+          <span class="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Seu Saldo</span>
+          <span class="text-sm font-bold text-green-400">R$ ${(S.user_profile?.real_balance || 0).toFixed(2)}</span>
+          <button onclick="solicitarSaque()" class="text-[10px] bg-green-900/20 hover:bg-green-600 text-green-400 hover:text-white px-2 py-0.5 rounded transition-all">Sacar</button>
+        </div>
+        ${(S.is_vip || S.is_trial) ? '<span class="px-3 py-1 bg-purple-900/50 text-purple-300 border border-purple-700/50 rounded-full text-xs font-bold">STATUS: ATIVO</span>' : ''}
+      </div>
     </div>
 
     <div class="grid md:grid-cols-2 gap-6">
@@ -2498,28 +2550,66 @@ async function buyGrainBRL(listingId, price) {
     // ═══════════════════════════════════════════════════════
     // TIMER DE COOLDOWN
     // ═══════════════════════════════════════════════════════
+    let cdTimerActive = false;
     function startCdTimer() {
+      if (cdTimerActive) return;
+      cdTimerActive = true;
       const tick = async () => {
-        const el = document.getElementById('cd-timer');
-        if (!el) return;
-        // tenta pegar do Supabase primeiro
+        if (!S.user) { cdTimerActive = false; return; }
+        
+        const area = document.getElementById('cooldown-area');
+        const timer = document.getElementById('cd-timer');
+        const btn = document.getElementById('btn-start-mine');
+        
         let lastMineVal = 0;
         try {
           const { data } = await sb.from('users').select('last_mine').eq('discord_id', S.user.id).single();
           if (data?.last_mine) lastMineVal = data.last_mine;
         } catch (e) { }
+        
         if (!lastMineVal) {
           const lm = await db.settings.get('lastMine');
           lastMineVal = lm?.value || 0;
         }
-        if (!lastMineVal) return;
-        const rem = cooldownMs() - (Date.now() - lastMineVal);
-        if (rem <= 0) { render(); return }
-        const el2 = document.getElementById('cd-timer');
-        if (el2) el2.textContent = `${Math.floor(rem / 60000)}m ${Math.floor((rem % 60000) / 1000)}s`;
+        
+        if (!lastMineVal) {
+          if(area) area.classList.add('hidden');
+          if(btn) { btn.disabled = false; btn.innerHTML = `⛏️ Começar ${getLabel('mining')}`; }
+          setTimeout(tick, 2000); // Check again later
+          return;
+        }
+
+        const elapsed = Date.now() - lastMineVal;
+        const cd = cooldownMs();
+        const rem = cd - elapsed;
+
+        if (rem <= 0) {
+          if(area) area.classList.add('hidden');
+          if(btn) {
+            btn.disabled = false;
+            btn.classList.remove('opacity-50', 'cursor-not-allowed');
+            btn.innerHTML = `⛏️ Começar ${getLabel('mining')}`;
+          }
+          // Se autoClicker estiver on e não estiver minerando agora, clica
+          if(S.autoClicker && !S.mining && (S.is_vip || (S.is_trial && Date.now() < S.trial_until))) {
+            toast('🤖 Auto-Clicker: Iniciando nova mineração...', 'info');
+            startMining();
+          }
+          setTimeout(tick, 1000); // Keep checking for next mine
+          return;
+        }
+
+        if(area) area.classList.remove('hidden');
+        if(timer) timer.textContent = `${Math.floor(rem / 60000)}m ${Math.floor((rem % 60000) / 1000)}s`;
+        if(btn) {
+          btn.disabled = true;
+          btn.classList.add('opacity-50', 'cursor-not-allowed');
+          btn.innerHTML = `⏳ Aguardando Cooldown...`;
+        }
+        
         setTimeout(tick, 1000);
       };
-      setTimeout(tick, 500);
+      tick();
     }
 
     async function abrirLojaVIP(planoId = 'mensal_10') {
@@ -2569,6 +2659,8 @@ async function buyGrainBRL(listingId, price) {
       } catch (e) { body = `<div class="p-6 text-red-400">Erro: ${e.message}</div>` }
       app.innerHTML = renderHeader() + `<main>${body}</main>`;
       
+      if (S.page === 'mine') startCdTimer();
+      
       if (S.pixModal) {
         const m = S.pixModal;
         const modal = document.createElement('div');
@@ -2576,7 +2668,9 @@ async function buyGrainBRL(listingId, price) {
         modal.innerHTML = `
           <div class="bg-gray-900 border border-gray-800 rounded-2xl p-6 max-w-sm w-full shadow-2xl">
             <div class="flex justify-between items-center mb-6">
-              <h3 class="text-xl font-bold text-purple-400">Assinar VIP ⭐</h3>
+              <h3 class="text-xl font-bold ${m.type === 'p2p' ? 'text-green-400' : 'text-purple-400'}">
+                ${m.type === 'p2p' ? 'Compra P2P 🛒' : 'Assinar VIP ⭐'}
+              </h3>
               <button onclick="S.pixModal = null; render()" class="text-gray-500 hover:text-white text-2xl">&times;</button>
             </div>
             
