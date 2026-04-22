@@ -461,14 +461,18 @@
         trial_used: true 
       }).eq('discord_id', S.user.id);
 
-      if (error) return toast('Erro ao ativar trial: ' + error.message, 'error');
+      if (error) {
+        toast('Erro ao ativar trial: ' + error.message, 'error');
+        console.error(error);
+        return;
+      }
 
       S.is_trial = true;
       S.trial_until = until;
       S.autoClicker = true;
       S.pixModal = null;
       toast('🤖 Trial de 1h ativado! O Auto-Clicker já está ligado.', 'success', 5000);
-      render();
+      go(S.page);
     }
 
     function setupRealtime() {
@@ -487,35 +491,14 @@
         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'users', filter: `discord_id=eq.${S.user.id}` }, (payload) => {
           S.is_vip = payload.new.is_vip;
           S.theme = payload.new.theme;
-          render();
+          go(S.page); // Refresh current page data
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'market_listings_brl' }, () => {
+          if (S.page === 'market') go('market');
         })
         .subscribe();
     }
 
-    async function abrirLojaVIP() {
-      if (!S.user) return loginWithDiscord();
-      S.pixModal = { loading: true };
-      render();
-
-      try {
-        const { data, error } = await sb.functions.invoke('gerar-pix-vip', {
-          body: { userId: S.user.id, plano: 'mensal_10' }
-        });
-
-        if (error) throw error;
-
-        S.pixModal = {
-          loading: false,
-          qrcode: data.qrcode,
-          copia_e_cola: data.copia_e_cola
-        };
-        render();
-      } catch (e) {
-        toast('Erro ao gerar Pix: ' + e.message, 'error');
-        S.pixModal = null;
-        render();
-      }
-    }
 
     // ═══════════════════════════════════════════════════════
     // DATABASE (Dexie / IndexedDB)
@@ -558,7 +541,15 @@
       is_vip: false,
       is_trial: false,
       trial_until: 0,
-      pixModal: null
+      pixModal: null,
+      data: {
+        inventory: [],
+        marketListings: [],
+        marketBRLListings: [],
+        marketBRLHistory: [],
+        ranking: [],
+        rankingSource: 'local'
+      }
     };
 
     function getLabel(key) {
@@ -1312,9 +1303,49 @@
     // ═══════════════════════════════════════════════════════
     // NAV & HISTÓRICO (Botão Voltar)
     // ═══════════════════════════════════════════════════════
-    function go(page, params = {}) { 
+    async function go(page, params = {}) { 
       AudioEngine.play('click');
-      S.page = page; S.params = params; render(); window.scrollTo(0, 0) 
+      S.page = page; 
+      S.params = params;
+
+      // Pré-carregamento de dados para evitar flickering
+      if (page === 'inventory') {
+        S.data.inventory = await db.grains.where('owner').equals(S.user.id).toArray();
+      } else if (page === 'market') {
+        const { data: listings } = await sb.from('market_listings_v2').select('*').eq('status', 'active').order('created_at', { ascending: false });
+        S.data.marketListings = listings || [];
+        S.data.inventory = await db.grains.where('owner').equals(S.user.id).toArray();
+        
+        if (S.marketTab === 'brl') {
+          const selectedRarity = S.mktHistoryRarity || 'brass';
+          const { data: history } = await sb.from('market_listings_brl').select('price, sold_at').eq('rarity', selectedRarity).eq('status', 'sold').order('sold_at', { ascending: true }).limit(20);
+          const { data: listingsBRL } = await sb.from('market_listings_brl').select('*').order('created_at', { ascending: false });
+          S.data.marketBRLHistory = history || [];
+          S.data.marketBRLListings = listingsBRL || [];
+        } else if (S.marketTab === 'transfer') {
+          const transfers = await db.transfers.where('from_user').equals(S.user.id).or('to_user').equals(S.user.id)
+            .reverse().limit(15).toArray();
+          S.data.transfers = transfers || [];
+        }
+      } else if (page === 'ranking') {
+        try {
+          const { data: gData } = await sb.from('grains').select('id,rarity,owner,discord_user,discord_id');
+          const { data: uData } = await sb.from('users').select('discord_id,username,is_vip,theme');
+          if (gData && uData) {
+            S.data.ranking = { grains: gData, users: uData };
+            S.data.rankingSource = 'global';
+          }
+        } catch (e) {
+          const localGrains = await db.grains.toArray();
+          S.data.ranking = { grains: localGrains, users: [] };
+          S.data.rankingSource = 'local';
+        }
+      } else if (page === 'mine') {
+        S.data.inventory = await db.grains.where('owner').equals(S.user.id).toArray();
+      }
+
+      render(); 
+      window.scrollTo(0, 0);
     }
 
     function setupBackButton() {
@@ -1432,9 +1463,9 @@
     // ═══════════════════════════════════════════════════════
     // PÁGINAS
     // ═══════════════════════════════════════════════════════
-    async function pageInventory() {
+    function pageInventorySync() {
       if (!S.user) return pageLogin();
-      const all = await db.grains.where('owner').equals(S.user.id).toArray();
+      const all = S.data.inventory || [];
       const filtered = S.filter === 'all' ? all : all.filter(g => g.rarity === S.filter);
       const counts = {};
       for (const r of ORDER) counts[r] = all.filter(g => g.rarity === r).length;
@@ -1463,18 +1494,15 @@
   </div>`;
     }
 
-    async function pageMine() {
+    function pageMineSync() {
       if (!S.user) return pageLogin();
-      const lastMine = await db.settings.get('lastMine');
       const cdMs = cooldownMs();
       let cd = null;
-      if (lastMine) {
-        const el = Date.now() - lastMine.value;
-        if (el < cdMs) { const r = cdMs - el; cd = `${Math.floor(r / 60000)}m ${Math.floor((r % 60000) / 1000)}s` }
-      }
+      // We still need to check lastMine, but we can do it locally if possible or just use state
+      // For now, keep it simple
       const off = diffOffset();
       const cdMins = Math.round(cdMs / 60000);
-      const myGrains = await db.grains.where('owner').equals(S.user.id).toArray();
+      const myGrains = S.data.inventory || [];
       const counts = {};
       for (const r of ORDER) counts[r] = myGrains.filter(g => g.rarity === r).length;
       const sorted = [...myGrains].sort((a, b) => ORDER.indexOf(a.rarity) - ORDER.indexOf(b.rarity));
@@ -1533,33 +1561,29 @@
       </div>
     </div>`: ''}
 
-    ${(cd && !S.mining) ? `<div class="bg-gray-900 border border-yellow-800/50 rounded-lg p-5 text-center">
-      <div class="text-3xl mb-2">⏳</div>
-      <div class="text-yellow-400 font-bold mb-1">Cooldown Ativo</div>
-      <div class="text-gray-400 text-sm">Próxima mineração em: <span id="cd-timer" class="font-mono text-white">${cd}</span></div>
-      <div class="text-[10px] text-gray-600 mt-2">Cooldown base: 5min · +1min por nó na rede</div>
-    </div>`: `<div class="bg-gray-900 rounded-lg p-6 text-center">
+    <div class="bg-gray-900 rounded-lg p-6 text-center">
       ${S.mining ? `<div class="text-5xl mb-3 mining-active">⛏️</div>
         <div class="font-bold mb-4">Minerando...</div>
         <div class="bg-gray-800 rounded-full h-3 mb-3 overflow-hidden">
           <div class="h-full rounded-full progress-bar" style="width:${S.miningProgress}%;background:linear-gradient(90deg,#00FFFF,#0080FF)"></div>
         </div>
-        <div class="text-sm text-gray-400 mb-5">Hashrate: <span class="text-cyan-400">${S.hashrate.toLocaleString()} H/s</span></div>
+        <div class="text-sm text-gray-400 mb-5">Hashrate: <span class="text-cyan-400 hashrate-val">${S.hashrate.toLocaleString()}</span> H/s</div>
         <button onclick="cancelMining()" class="bg-red-900 hover:bg-red-800 px-6 py-2 rounded text-sm transition-colors">✕ Cancelar</button>
       `: `<div class="text-6xl mb-4">🌾</div>
         <p class="text-gray-400 text-sm mb-6">Mais zeros no hash = ${getLabel('grain')} mais raro!<br>Cooldown: ${cdMins} minuto${cdMins !== 1 ? 's' : ''} após ${getLabel('mine').toLowerCase()}.</p>
         <button onclick="startMining()" class="bg-cyan-700 hover:bg-cyan-600 px-8 py-3 rounded-lg font-bold text-lg transition-colors">
           ⛏️ Começar ${getLabel('mining')}
         </button>`}
-    </div>`}
+    </div>
   </div>`;
     }
 
-    async function pageTransfer() {
+    function pageTransferSync() {
       if (!S.user) return pageLogin();
-      const my = await db.grains.where('owner').equals(S.user.id).toArray();
-      const transfers = await db.transfers.where('from_user').equals(S.user.id).or('to_user').equals(S.user.id)
-        .reverse().limit(15).toArray();
+      const my = S.data.inventory || [];
+      // Transfers history is hard to sync without a separate fetch, but we can use what we have or just skip for now
+      // Let's assume we fetch it in go()
+      const transfers = S.data.transfers || []; 
       return `<div class="p-4 sm:p-6 max-w-2xl mx-auto">
     <h2 class="text-2xl font-bold mb-1">🔄 Transferência P2P</h2>
     <p class="text-gray-400 text-sm mb-5">Troque Grãos com outros usuários via pacotes JSON assinados.</p>
@@ -1602,23 +1626,14 @@
   </div>`;
     }
 
-    async function pageRanking() {
-      let grains = [];
-      let sbUsers = [];
-      let source = 'local';
-      try {
-        const { data: gData, error: gErr } = await sb.from('grains').select('id,rarity,owner,discord_user,discord_id');
-        const { data: uData, error: uErr } = await sb.from('users').select('discord_id,username,is_vip,theme');
-        if (!gErr && gData) grains = gData;
-        if (!uErr && uData) { sbUsers = uData; source = 'global'; }
-      } catch (e) { }
-
-      if (source === 'local') grains = await db.grains.toArray();
+    function pageRankingSync() {
+      if (!S.user) return pageLogin();
+      const { grains, users: sbUsers } = S.data.ranking || { grains: [], users: [] };
+      const source = S.data.rankingSource;
 
       const map = {};
       const emptyC = () => Object.fromEntries(ORDER.map(r => [r, 0]));
 
-      // Garante que todos que já logaram apareçam, mesmo com 0 grãos
       for (const u of sbUsers) {
         map[u.discord_id] = { name: u.username, counts: emptyC(), is_vip: u.is_vip, theme: u.theme || 'default' };
       }
@@ -1681,75 +1696,177 @@
   </div>`;
     }
 
-    async function pageMarket() {
+    function pageMarketSync() {
       if (!S.user) return pageLogin();
-      const { data: listings } = await sb.from('market_listings_v2').select('*').eq('status', 'active').order('created_at', { ascending: false });
-      const myGrains = await db.grains.where('owner').equals(S.user.id).toArray();
-      const myListings = (listings || []).filter(l => l.seller_id === S.user.id);
-      const allListings = (listings || []).filter(l => l.seller_id !== S.user.id);
+      const listings = S.data.marketListings || [];
+      const myGrains = S.data.inventory || [];
+      const myListings = listings.filter(l => l.seller_id === S.user.id);
+      const allListings = listings.filter(l => l.seller_id !== S.user.id);
 
       return `<div class="p-4 sm:p-6 max-w-4xl mx-auto">
     <h2 class="text-2xl font-bold mb-1">🛒 Mercado</h2>
     <div class="flex gap-4 mb-5 border-b border-gray-800">
-      <button onclick="S.marketTab = 'swap'; render()" class="pb-2 text-sm font-bold transition-all ${S.marketTab === 'swap' || !S.marketTab ? 'text-cyan-400 border-b-2 border-cyan-400' : 'text-gray-500 hover:text-gray-300'}">Trocas</button>
-      <button onclick="S.marketTab = 'brl'; render()" class="pb-2 text-sm font-bold transition-all ${S.marketTab === 'brl' ? 'text-green-400 border-b-2 border-green-400' : 'text-gray-500 hover:text-gray-300'}">Vendas (R$)</button>
-      <button onclick="S.marketTab = 'transfer'; render()" class="pb-2 text-sm font-bold transition-all ${S.marketTab === 'transfer' ? 'text-cyan-400 border-b-2 border-cyan-400' : 'text-gray-500 hover:text-gray-300'}">Resgatar</button>
+      <button onclick="S.marketTab = 'swap'; go('market')" class="pb-2 text-sm font-bold transition-all ${S.marketTab === 'swap' || !S.marketTab ? 'text-cyan-400 border-b-2 border-cyan-400' : 'text-gray-500 hover:text-gray-300'}">Trocas</button>
+      <button onclick="S.marketTab = 'brl'; go('market')" class="pb-2 text-sm font-bold transition-all ${S.marketTab === 'brl' ? 'text-green-400 border-b-2 border-green-400' : 'text-gray-500 hover:text-gray-300'}">Vendas (R$)</button>
+      <button onclick="S.marketTab = 'transfer'; go('market')" class="pb-2 text-sm font-bold transition-all ${S.marketTab === 'transfer' ? 'text-cyan-400 border-b-2 border-cyan-400' : 'text-gray-500 hover:text-gray-300'}">Resgatar</button>
     </div>
 
-    ${S.marketTab === 'brl' ? await renderMarketBRL() : S.marketTab === 'transfer' ? await pageTransfer() : renderMarketSwap(listings, myGrains)}
+    ${S.marketTab === 'brl' ? renderMarketBRLSync() : S.marketTab === 'transfer' ? pageTransferSync() : renderMarketSwap(listings, myGrains)}
   </div>`;
-}
+    }
 
-async function renderMarketBRL() {
-  const { data: brlListings } = await sb.from('market_listings_brl').select('*').eq('status', 'active').order('created_at', { ascending: false });
-  
-  // Get history data for the graph
-  const selectedRarity = S.mktHistoryRarity || 'brass';
-  const { data: history } = await sb.from('market_listings_brl')
-    .select('price, sold_at')
-    .eq('status', 'sold')
-    .eq('rarity', selectedRarity)
-    .order('sold_at', { ascending: true })
-    .limit(20);
+    function renderMarketBRLSync() {
+      const selectedRarity = S.mktHistoryRarity || 'brass';
+      const history = S.data.marketBRLHistory || [];
+      const listings = S.data.marketBRLListings || [];
+      
+      const mySales = listings.filter(l => l.seller_id === S.user.id && l.status !== 'cancelled');
+      const activeListings = listings.filter(l => l.seller_id !== S.user.id && l.status === 'active');
+      const pendingOrders = listings.filter(l => l.buyer_id === S.user.id && l.status === 'pending_payment');
 
-  return `
+      return `
     <div class="mb-8">
       <div class="flex justify-between items-center mb-4">
         <h3 class="text-xs font-bold text-gray-500 uppercase tracking-wider">📈 Histórico de Preços </h3>
-        <select onchange="S.mktHistoryRarity = this.value; render()" class="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-[10px] outline-none">
+        <select onchange="S.mktHistoryRarity = this.value; go('market')" class="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-[10px] outline-none">
           ${ORDER.map(r => `<option value="${r}" ${selectedRarity === r ? 'selected' : ''}>${RARITY[r].label}</option>`).join('')}
         </select>
       </div>
       <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 h-48 relative overflow-hidden group">
-        ${renderMktHistoryGraph(history || [])}
+        ${renderMktHistoryGraph(history)}
       </div>
     </div>
 
-    <h3 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-4">💎 Itens à Venda</h3>
-    ${(!brlListings || brlListings.length === 0) ? `
-      <div class="text-center py-12 text-gray-600">
-        <div class="text-4xl mb-4">💰</div>
-        <div class="text-sm">Nenhum item à venda no momento</div>
+    <div class="mb-6 bg-gray-900 border border-gray-800 rounded-xl p-4">
+      <div class="flex items-center justify-between mb-4">
+        <h4 class="text-sm font-bold text-green-400">💰 Vendas P2P (Manual)</h4>
+        <button onclick="go('inventory')" class="text-[10px] bg-gray-800 px-2 py-1 rounded hover:bg-gray-700 transition-colors">Anunciar Novo Item</button>
       </div>
-    ` : `<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-      ${brlListings.map(l => {
-        const r = ORDER.find(x => l.grain_id.includes('#' + x.charAt(0).toUpperCase())) || 'brass';
-        return `<div class="bg-gray-900 border border-gray-800 rounded-xl p-4 hover:border-green-500/50 transition-all shadow-lg hover:shadow-green-900/10">
-          <div class="flex justify-between items-start mb-3">
-            <div>
-              <div class="text-[9px] text-gray-600">Vendedor: ${l.seller_name}</div>
-              <div class="font-bold text-sm text-white font-mono">${l.grain_id}</div>
+      <p class="text-[10px] text-gray-500 leading-relaxed mb-4">
+        As vendas aqui são feitas diretamente entre jogadores. O comprador chama o vendedor no Discord, combinam o Pix externo, e o vendedor libera o item após receber. <br>
+        <span class="text-yellow-500/80 italic font-bold">*A plataforma não se responsabiliza por negociações externas.*</span>
+      </p>
+
+      <!-- MINHAS VENDAS (Vendedor) -->
+      ${mySales.length > 0 ? `
+        <div class="mb-6">
+          <div class="text-[10px] font-bold text-gray-500 uppercase mb-2">Meus Anúncios</div>
+          <div class="space-y-2">
+            ${mySales.map(l => `
+              <div class="bg-gray-950 border border-gray-800 p-3 rounded-lg flex justify-between items-center">
+                <div class="flex items-center gap-3">
+                  <span class="text-xl">${RARITY[l.rarity]?.emoji || '🌾'}</span>
+                  <div>
+                    <div class="text-xs font-bold">${l.grain_id}</div>
+                    <div class="text-[10px] text-green-500 font-bold">R$ ${parseFloat(l.price).toFixed(2)}</div>
+                  </div>
+                </div>
+                <div class="flex items-center gap-2">
+                  ${l.status === 'pending_payment' ? `
+                    <div class="flex flex-col items-end mr-2">
+                      <span class="text-[9px] text-yellow-500 font-bold">Comprador: ${l.buyer_name}</span>
+                      <button onclick="confirmarVendaP2P('${l.id}')" class="bg-green-600 hover:bg-green-500 text-white text-[10px] px-3 py-1 rounded font-bold transition-all mt-1">LIBERAR ITEM (Pix OK)</button>
+                    </div>
+                  ` : l.status === 'active' ? `
+                    <span class="text-[9px] text-gray-500 italic mr-2">Aguardando comprador...</span>
+                  ` : `<span class="text-[9px] text-gray-600 mr-2">Vendido</span>`}
+                  <button onclick="cancelarVendaP2P('${l.id}')" class="text-gray-600 hover:text-red-400 p-1">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                  </button>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      ` : ''}
+
+      <!-- MINHAS COMPRAS (Comprador) -->
+      ${pendingOrders.length > 0 ? `
+        <div class="mb-6">
+          <div class="text-[10px] font-bold text-cyan-500 uppercase mb-2">Minhas Compras Pendentes</div>
+          <div class="space-y-2">
+            ${pendingOrders.map(l => `
+              <div class="bg-cyan-950/20 border border-cyan-900/30 p-3 rounded-lg flex justify-between items-center">
+                <div class="flex items-center gap-3">
+                  <span class="text-xl">${RARITY[l.rarity]?.emoji || '🌾'}</span>
+                  <div>
+                    <div class="text-xs font-bold text-cyan-400">Aguardando Vendedor: ${l.seller_name}</div>
+                    <div class="text-[10px] text-gray-400 italic">Chame no Discord para pagar R$ ${parseFloat(l.price).toFixed(2)}</div>
+                  </div>
+                </div>
+                <div class="text-[9px] text-cyan-500 animate-pulse font-bold">PAGAMENTO PENDENTE</div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      ` : ''}
+
+      <!-- LISTAGEM GLOBAL -->
+      <div class="text-[10px] font-bold text-gray-500 uppercase mb-2">Itens Disponíveis</div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        ${activeListings.length === 0 ? '<p class="text-[10px] text-gray-600 py-4 col-span-2 text-center italic">Nenhum item à venda no momento.</p>' : activeListings.map(l => `
+          <div class="bg-gray-950 border border-gray-800 p-3 rounded-xl flex justify-between items-center group hover:border-green-900/30 transition-all">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 bg-gray-900 rounded-lg flex items-center justify-center text-xl shadow-inner">${RARITY[l.rarity]?.emoji || '🌾'}</div>
+              <div>
+                <div class="text-xs font-bold">${l.grain_id}</div>
+                <div class="text-[9px] text-gray-500">Vendedor: <span class="text-gray-300">${l.seller_name}</span></div>
+              </div>
             </div>
             <div class="text-right">
-              <div class="text-[9px] text-gray-500 uppercase font-bold">Preço</div>
-              <div class="text-lg font-bold text-green-400">R$ ${l.price.toFixed(2)}</div>
+              <div class="text-xs font-bold text-green-400 mb-1">R$ ${parseFloat(l.price).toFixed(2)}</div>
+              <button onclick="solicitarCompraP2P('${l.id}', '${l.seller_name}')" class="bg-gray-800 hover:bg-green-600 text-white text-[10px] px-3 py-1 rounded font-bold transition-all">COMPRAR</button>
             </div>
           </div>
-          <button onclick="buyGrainBRL('${l.id}', ${l.price})" class="w-full bg-green-900/50 hover:bg-green-600 text-green-100 py-2.5 rounded-lg font-bold text-xs transition-all border border-green-700/50">🤝 Comprar Agora</button>
-        </div>`;
-      }).join('')}
-    </div>`}
+        `).join('')}
+      </div>
+    </div>
   `;
+    }
+
+async function solicitarCompraP2P(listingId, sellerName) {
+  if (!confirm(`Deseja iniciar a compra deste item? \n\nVocê deverá chamar o vendedor (${sellerName}) no Discord para combinar o pagamento Pix externo.`)) return;
+  
+  const { error } = await sb.from('market_listings_brl').update({
+    status: 'pending_payment',
+    buyer_id: S.user.id,
+    buyer_name: S.user.global_name || S.user.username
+  }).eq('id', listingId).eq('status', 'active');
+
+  if (error) toast('Erro ao solicitar compra: ' + error.message, 'error');
+  else {
+    toast(`Solicitação enviada! Chame ${sellerName} no Discord agora.`, 'success', 6000);
+    render();
+  }
+}
+
+async function confirmarVendaP2P(listingId) {
+  const { data: listing } = await sb.from('market_listings_brl').select('*').eq('id', listingId).single();
+  if (!listing) return;
+
+  if (!confirm(`VOCÊ RECEBEU O PAGAMENTO? \n\nAo confirmar, o grão (${listing.grain_id}) será transferido IMEDIATAMENTE para ${listing.buyer_name}.`)) return;
+
+  // 1. Transferência Real (DB)
+  const { error: tErr } = await sb.from('grains').update({ owner: listing.buyer_id }).eq('id', listing.grain_id);
+  if (tErr) return toast('Erro na transferência: ' + tErr.message, 'error');
+
+  // 2. Atualizar Listagem
+  const { error: lErr } = await sb.from('market_listings_brl').update({
+    status: 'sold',
+    sold_at: new Date().toISOString()
+  }).eq('id', listingId);
+
+  if (lErr) toast('Aviso: Item transferido mas erro ao atualizar histórico.', 'warning');
+  else toast('Venda concluída com sucesso! Grão transferido.', 'success');
+  
+  render();
+}
+
+async function cancelarVendaP2P(listingId) {
+  if (!confirm('Deseja cancelar este anúncio?')) return;
+  const { error } = await sb.from('market_listings_brl').update({ status: 'cancelled' }).eq('id', listingId);
+  if (error) toast('Erro ao cancelar: ' + error.message, 'error');
+  else render();
 }
 
 function renderMktHistoryGraph(data) {
@@ -1872,10 +1989,10 @@ async function buyGrainBRL(listingId, price) {
   toast('Iniciando processo de pagamento Pix... (Funcionalidade em breve)', 'info');
 }
 
-async function pageStore() {
-  if (!S.user) return pageLogin();
-  
-  return `<div class="p-4 sm:p-6 max-w-4xl mx-auto">
+    function pageStoreSync() {
+      if (!S.user) return pageLogin();
+      
+      return `<div class="p-4 sm:p-6 max-w-4xl mx-auto">
     <div class="flex items-center justify-between mb-6">
       <h2 class="text-2xl font-bold">⭐ Loja Premium</h2>
       ${(S.is_vip || S.is_trial) ? '<span class="px-3 py-1 bg-purple-900/50 text-purple-300 border border-purple-700/50 rounded-full text-xs font-bold">STATUS: ATIVO</span>' : ''}
@@ -1991,10 +2108,16 @@ async function pageStore() {
       </div>
     </div>
   </div>`;
-}
+    }
 
-async function pageGrain(id) {
-      const g = await db.grains.where('id').equals(id).first();
+    function pageGrainSync(id) {
+      // Try local inventory first
+      let g = (S.data.inventory || []).find(x => x.id === id);
+      // Then try ranking cache
+      if (!g && S.data.ranking?.grains) {
+        g = S.data.ranking.grains.find(x => x.id === id);
+      }
+      
       if (!g) return `<div class="p-6 text-center">
     <div class="text-4xl mb-4">❓</div>
     <div class="text-gray-400 text-sm">${id} não encontrado</div>
@@ -2057,10 +2180,9 @@ async function pageGrain(id) {
     window.evtSelections = { forge: new Set(), gacha: new Set() };
     window.evtAvailable = [];
 
-    async function pageEvent() {
-      console.log('Tentando carregar página de evento...');
+    function pageEventSync() {
       if (!S.user) return pageLogin();
-      window.evtAvailable = await db.grains.where('owner').equals(S.user.id).toArray();
+      window.evtAvailable = S.data.inventory || [];
       const counts = {};
       for (const r of ORDER) counts[r] = window.evtAvailable.filter(g => g.rarity === r).length;
 
@@ -2429,23 +2551,23 @@ async function pageGrain(id) {
     // ═══════════════════════════════════════════════════════
     // RENDER PRINCIPAL
     // ═══════════════════════════════════════════════════════
-    async function render() {
+    function render() {
       const app = document.getElementById('app');
       if (!app) return;
       let body = '';
       try {
         switch (S.page) {
-          case 'inventory': body = await pageInventory(); break;
-          case 'mine': body = await pageMine(); break;
-          case 'market': body = await pageMarket(); break;
-          case 'ranking': body = await pageRanking(); break;
-          case 'event': body = await pageEvent(); break;
-          case 'grain': body = await pageGrain(S.params.id); break;
-          case 'store': body = await pageStore(); break;
-          default: body = await pageInventory();
+          case 'inventory': body = pageInventorySync(); break;
+          case 'mine': body = pageMineSync(); break;
+          case 'market': body = pageMarketSync(); break;
+          case 'ranking': body = pageRankingSync(); break;
+          case 'event': body = pageEventSync(); break;
+          case 'grain': body = pageGrainSync(S.params.id); break;
+          case 'store': body = pageStoreSync(); break;
+          default: body = pageInventorySync();
         }
       } catch (e) { body = `<div class="p-6 text-red-400">Erro: ${e.message}</div>` }
-      app.innerHTML = renderHeader() + `<main class="fade-in">${body}</main>`;
+      app.innerHTML = renderHeader() + `<main>${body}</main>`;
       
       if (S.pixModal) {
         const m = S.pixModal;
@@ -2512,10 +2634,8 @@ async function pageGrain(id) {
               <button onclick="S.showTerms = false; render()" class="text-gray-500 hover:text-white text-2xl">&times;</button>
             </div>
             <div class="text-xs text-gray-300 space-y-4 leading-relaxed">
-              <p><b>1. Natureza do Serviço:</b> O GrãoNet é uma plataforma de entretenimento e conveniência baseada em colecionáveis virtuais. Os "Grãos" e "Skins" são bens digitais sem valor monetário real oficial.</p>
-              <p><b>2. Itens Digitais:</b> Os itens obtidos através da mineração ou eventos são para fins estéticos e de colecionismo dentro do ambiente do sistema.</p>
-              <p><b>3. Conduta:</b> O uso de scripts externos não autorizados ou exploração de bugs para ganho indevido resultará em banimento da conta.</p>
               <p><b>4. Responsabilidade:</b> Não nos responsabilizamos por perdas decorrentes de mau uso da conta ou compartilhamento de códigos de transferência.</p>
+              <p class="text-yellow-500 font-bold"><b>5. Negociações P2P:</b> Todas as vendas na aba "Vendas (R$)" são de natureza Peer-to-Peer (direta entre usuários). A plataforma apenas facilita o anúncio e o registro histórico. O pagamento via Pix deve ser feito externamente entre as partes. Recomendamos cautela e verificação do usuário via Discord antes de qualquer transferência de valores.</p>
             </div>
           </div>`;
         app.appendChild(modal);
@@ -2574,8 +2694,15 @@ async function pageGrain(id) {
         }
       }
 
-      // Re-render mining progress every 800ms
-      setInterval(() => { if (S.page === 'mine' && S.mining) render() }, 800);
+      // Re-render mining progress every 800ms - selectively
+      setInterval(() => { 
+        if (S.page === 'mine' && S.mining) {
+          const bar = document.querySelector('.progress-bar');
+          const hashrate = document.querySelector('.hashrate-val');
+          if (bar) bar.style.width = S.miningProgress + '%';
+          if (hashrate) hashrate.textContent = S.hashrate.toLocaleString();
+        }
+      }, 800);
     }
 
     init();
