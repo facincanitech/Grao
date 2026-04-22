@@ -1787,6 +1787,7 @@
     }
 
     function renderMarketBRLSync() {
+      if (!S.user) return pageLogin();
       const selectedRarity = S.mktHistoryRarity || 'brass';
       const history = S.data.marketBRLHistory || [];
       const listings = S.data.marketBRLListings || [];
@@ -2079,7 +2080,7 @@
             <div class="flex items-center justify-between p-3 bg-gray-950 rounded-xl border border-gray-800/50">
               <div>
                 <div class="text-xs font-bold text-gray-200">Saque Pix</div>
-                <div class="text-[9px] text-gray-500">Chave: ${w.pix_key.slice(0,15)}...</div>
+                <div class="text-[9px] text-gray-500">Chave: ${String(w.pix_key || '').slice(0,15)}...</div>
               </div>
               <div class="text-right">
                 <div class="text-xs font-bold text-white">R$ ${Number(w.amount).toFixed(2)}</div>
@@ -2865,6 +2866,7 @@
               </div>
             ` : `
               <div class="text-center">
+                ${m.type !== 'p2p' ? `
                 <div class="mb-6 text-left space-y-2 bg-gray-800/50 p-4 rounded-xl border border-gray-800">
                   <div class="text-xs font-bold text-gray-400 uppercase mb-2">Vantagens Premium:</div>
                   <div class="flex items-center gap-2 text-xs"><span>🤖</span> <b>Auto-Clicker:</b> Mineração automática 24h.</div>
@@ -2874,10 +2876,15 @@
                 </div>
 
                 <p class="text-[10px] text-gray-500 mb-4 px-2 italic">
-                  *Ao ativar o VIP (${m.plano.label}), você concorda com a prestação imediata do serviço e renuncia ao direito de estorno após o início do uso das vantagens cosméticas e de automação.
+                  *Ao ativar o VIP (${m.plano?.label || 'Premium'}), você concorda com a prestação imediata do serviço e renuncia ao direito de estorno após o início do uso das vantagens cosméticas e de automação.
                 </p>
+                ` : `
+                <div class="mb-6 text-left bg-green-900/10 p-4 rounded-xl border border-green-900/20">
+                  <p class="text-xs text-gray-300">Você está comprando um item de outro jogador. O valor será creditado no saldo dele após a confirmação do banco.</p>
+                </div>
+                `}
 
-                <p class="text-xs text-gray-400 mb-4 font-bold">Valor: R$ ${m.plano.price.toFixed(2)}</p>
+                <p class="text-xs text-gray-400 mb-4 font-bold">Valor: R$ ${Number(m.price || m.plano?.price || 0).toFixed(2)}</p>
                 <div class="bg-white p-2 rounded-xl mb-4 inline-block">
                   <img src="${m.qrcode}" class="w-40 h-40">
                 </div>
@@ -2889,10 +2896,13 @@
                   <button onclick="navigator.clipboard.writeText('${m.copia_e_cola}'); toast('Copiado!', 'success')" class="bg-purple-800 hover:bg-purple-700 py-3 rounded-xl font-bold transition-all">📋 Copiar Código</button>
                   <p class="text-[10px] text-yellow-500 animate-pulse mt-2">Aguardando confirmação automática...</p>
                 </div>
+                
+                ${m.type !== 'p2p' ? `
                 <div class="mt-6 pt-6 border-t border-gray-800">
                   <p class="text-[10px] text-gray-500 mb-2">Quer testar antes de comprar?</p>
                   <button onclick="ativarTrial()" class="w-full bg-gray-800 hover:bg-gray-700 py-2 rounded-lg text-[10px] font-bold transition-all">🚀 Ativar Trial de 1 Hora</button>
                 </div>
+                ` : ''}
               </div>
             `}
           </div>
