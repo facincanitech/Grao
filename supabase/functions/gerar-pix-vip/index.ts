@@ -7,7 +7,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-serve(async (req) => {
+serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
@@ -25,7 +25,7 @@ serve(async (req) => {
     }
     
     const certPem = atob(certBase64)
-    // @ts-ignore: Deno.createHttpClient is Deno-specific
+    // @ts-ignore
     const httpClient = Deno.createHttpClient({
       certChain: certPem,
       privateKey: certPem,
@@ -38,7 +38,7 @@ serve(async (req) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ grant_type: "client_credentials" }),
-      // @ts-ignore: client property is Deno-specific
+      // @ts-ignore
       client: httpClient,
     })
     
@@ -57,7 +57,7 @@ serve(async (req) => {
         chave: Deno.env.get('EFI_PIX_KEY'),
         solicitacaoPagador: "VIP GraoNet"
       }),
-      // @ts-ignore: client property is Deno-specific
+      // @ts-ignore
       client: httpClient,
     })
 
@@ -69,7 +69,7 @@ serve(async (req) => {
 
     const qrRes = await fetch(`https://api-pix.efipay.com.br/v2/loc/${locId}/qrcode`, {
       headers: { "Authorization": `Bearer ${access_token}` },
-      // @ts-ignore: client property is Deno-specific
+      // @ts-ignore
       client: httpClient,
     })
     const qrData = await qrRes.json()
@@ -95,7 +95,7 @@ serve(async (req) => {
       status: 200,
     })
 
-  } catch (error) {
+  } catch (error: any) {
     return new Response(JSON.stringify({ error: error.message }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       status: 400,
