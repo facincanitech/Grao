@@ -1853,9 +1853,22 @@
                 </div>
               </div>
             `).join('')}
+          </div>
+        </div>
+      ` : ''}
+
+      <!-- MINHAS COMPRAS (Comprador) -->
+      ${pendingOrders.length > 0 ? `
+        <div class="mb-6">
+          <div class="text-[10px] font-bold text-cyan-500 uppercase mb-2">Minhas Compras Pendentes</div>
+          <div class="space-y-2">
+            ${pendingOrders.map(l => `
+              <div class="bg-cyan-950/20 border border-cyan-900/30 p-3 rounded-lg flex justify-between items-center">
+                <div class="flex items-center gap-3">
+                  <span class="text-xl">${RARITY[l.rarity]?.emoji || '🌾'}</span>
                   <div>
                     <div class="text-xs font-bold text-cyan-400">Aguardando Vendedor: ${l.seller_name}</div>
-                    <div class="text-[10px] text-gray-400 italic">Chame no Discord para pagar R$ ${parseFloat(l.price).toFixed(2)}</div>
+                    <div class="text-[10px] text-gray-400 italic">Pagamento P2P: R$ ${parseFloat(l.price).toFixed(2)}</div>
                   </div>
                 </div>
                 <div class="text-[9px] text-cyan-500 animate-pulse font-bold">PAGAMENTO PENDENTE</div>
