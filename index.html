@@ -326,10 +326,22 @@
     const Notif = {
       async request() {
         if (!("Notification" in window)) return;
-        if (Notification.permission !== "granted") await Notification.requestPermission();
+        if (Notification.permission !== "granted") {
+          const res = await Notification.requestPermission();
+          if (res === "granted") {
+            S.notificationsEnabled = true;
+            await db.settings.put({ key: 'notificationsEnabled', value: true });
+            toast('Notificações ativadas!', 'success');
+          }
+        } else {
+          S.notificationsEnabled = !S.notificationsEnabled;
+          await db.settings.put({ key: 'notificationsEnabled', value: S.notificationsEnabled });
+          toast(S.notificationsEnabled ? 'Notificações ativadas!' : 'Notificações desativadas', 'info');
+        }
+        render();
       },
       send(title, body) {
-        if (!("Notification" in window) || Notification.permission !== "granted") return;
+        if (!S.notificationsEnabled || !("Notification" in window) || Notification.permission !== "granted") return;
         new Notification(title, { body, icon: 'https://discord.gg/j8mV9H7fWP' });
       }
     };
@@ -435,7 +447,9 @@
       lavoura: null,
       myContrib: 0,
       onlineCount: 0,
-      acceptingListing: null
+      acceptingListing: null,
+      showMenu: false,
+      notificationsEnabled: false
     };
 
     // ═══════════════════════════════════════════════════════
@@ -1167,8 +1181,26 @@
         <span class="text-gray-300 hidden sm:inline truncate max-w-[120px]">${nm}</span>
         <span class="text-xs text-gray-600">|</span>
         <span class="text-xs text-gray-500" id="net-size">${S.onlineCount} On</span>
-        <button onclick="logout()" class="text-xs text-gray-600 hover:text-red-400 transition-colors ml-1">Sair</button>
-        <button onclick="Notif.request()" title="Ativar Notificações" class="text-gray-600 hover:text-cyan-400 ml-1">🔔</button>
+        <div class="relative">
+          <button onclick="S.showMenu = !S.showMenu; render()" class="p-1 text-gray-400 hover:text-white transition-colors">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+          </button>
+          ${S.showMenu ? `
+            <div class="absolute right-0 mt-2 w-48 bg-gray-900 border border-gray-800 rounded-lg shadow-xl z-50 overflow-hidden fade-in">
+              <button onclick="Notif.request(); S.showMenu=false; render()" class="w-full text-left px-4 py-3 text-xs hover:bg-gray-800 transition-colors border-b border-gray-800 flex items-center justify-between gap-2">
+                <span class="flex items-center gap-2"><span>🔔</span> Notificações</span>
+                <span class="text-[10px] ${S.notificationsEnabled ? 'text-green-400' : 'text-gray-500'} font-bold">${S.notificationsEnabled ? 'ON' : 'OFF'}</span>
+              </button>
+              <a href="mailto:facincanitech@gmail.com" class="w-full text-left px-4 py-3 text-xs hover:bg-gray-800 transition-colors border-b border-gray-800 flex items-center gap-2">
+                <span>📧</span> Contato
+              </a>
+              <button onclick="logout(); S.showMenu=false; render()" class="w-full text-left px-4 py-3 text-xs hover:bg-gray-800 transition-colors text-red-400 flex items-center gap-2">
+                <span>🚪</span> Sair
+              </button>
+            </div>
+            <div class="fixed inset-0 z-40" onclick="S.showMenu = false; render()"></div>
+          ` : ''}
+        </div>
       `: `<button onclick="loginWithDiscord()" class="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 px-4 py-2 rounded text-sm font-medium transition-colors">
         <svg width="16" height="16" viewBox="0 0 71 55" fill="currentColor"><path d="M60.1 4.9A58.5 58.5 0 0 0 45.6.6a.2.2 0 0 0-.2.1 40.8 40.8 0 0 0-1.8 3.7 54 54 0 0 0-16.2 0A37.2 37.2 0 0 0 25.6.7a.2.2 0 0 0-.2-.1A58.4 58.4 0 0 0 10.9 4.9a.2.2 0 0 0-.1.1C1.6 18.7-.9 32.2.3 45.4a.2.2 0 0 0 .1.2 58.8 58.8 0 0 0 17.7 8.9.2.2 0 0 0 .2-.1 42 42 0 0 0 3.6-5.9.2.2 0 0 0-.1-.3 38.7 38.7 0 0 1-5.5-2.6.2.2 0 0 1 0-.4l1.1-.8a.2.2 0 0 1 .2 0c11.5 5.3 24 5.3 35.4 0a.2.2 0 0 1 .2 0l1.1.8a.2.2 0 0 1 0 .4 36.1 36.1 0 0 1-5.5 2.6.2.2 0 0 0-.1.3 47.1 47.1 0 0 0 3.6 5.9.2.2 0 0 0 .2.1 58.7 58.7 0 0 0 17.7-8.9.2.2 0 0 0 .1-.2c1.5-15.3-2.5-28.6-10.6-40.4a.2.2 0 0 0-.1-.1ZM23.7 37.3c-3.5 0-6.4-3.2-6.4-7.1s2.8-7.1 6.4-7.1c3.6 0 6.4 3.2 6.4 7.1 0 3.9-2.9 7.1-6.4 7.1Zm23.6 0c-3.5 0-6.4-3.2-6.4-7.1s2.8-7.1 6.4-7.1c3.6 0 6.5 3.2 6.5 7.1 0 3.9-2.9 7.1-6.5 7.1Z"/></svg>
         Discord
@@ -1965,6 +1997,9 @@
           syncLocalGrains(S.user.id);
         }
       }
+      const notifPref = await db.settings.get('notificationsEnabled');
+      if (notifPref) S.notificationsEnabled = notifPref.value;
+
       await loadLavoura();
       await updateOnlineCount();
       await render();
