@@ -151,6 +151,11 @@
       50% { text-shadow: 0 0 15px #a855f7, 0 0 30px #d8b4fe, 0 0 40px #a855f7; color: #f3e8ff; }
     }
 
+    .glow-gold {
+      color: #ffd700 !important;
+      text-shadow: 0 0 5px rgba(255, 215, 0, 0.6), 0 0 10px rgba(255, 215, 0, 0.3);
+    }
+
     .glow-purple {
       animation: purplePulse 2s infinite ease-in-out;
       font-weight: bold;
@@ -419,6 +424,32 @@
         if (count) S.networkSize = Math.max(1, count);
         updateHeader();
       } catch (e) { }
+    }
+
+    async function ativarTrial() {
+      if (!S.user) return loginWithDiscord();
+      if (S.is_vip) return toast('Você já é VIP!', 'info');
+      
+      const { data } = await sb.from('users').select('trial_used').eq('discord_id', S.user.id).single();
+      if (data?.trial_used) return toast('Você já utilizou seu período de teste!', 'warning');
+
+      const now = Date.now();
+      const until = now + (60 * 60 * 1000); 
+      
+      const { error } = await sb.from('users').update({ 
+        is_trial: true, 
+        trial_until: until,
+        trial_used: true 
+      }).eq('discord_id', S.user.id);
+
+      if (error) return toast('Erro ao ativar trial: ' + error.message, 'error');
+
+      S.is_trial = true;
+      S.trial_until = until;
+      S.autoClicker = true;
+      S.pixModal = null;
+      toast('🤖 Trial de 1h ativado! O Auto-Clicker já está ligado.', 'success', 5000);
+      render();
     }
 
     function setupRealtime() {
@@ -1320,7 +1351,7 @@
       ${u ? `
         ${av ? `<img src="${av}" class="w-7 h-7 rounded-full border border-gray-700 shrink-0">` : ''}
         <div class="flex flex-col">
-          <span class="text-gray-300 hidden sm:inline truncate max-w-[120px] ${S.is_vip ? 'glow-purple' : ''}">${nm}</span>
+          <span class="text-gray-300 hidden sm:inline truncate max-w-[120px] ${S.is_vip ? 'glow-gold glow-purple font-bold' : ''}">${S.is_vip ? '👑 ' : ''}${nm}</span>
           ${S.is_vip ? '<span class="text-[8px] text-purple-400 font-bold -mt-1 hidden sm:inline">PREMIUM</span>' : ''}
         </div>
         <span class="text-xs text-gray-600">|</span>
@@ -1355,8 +1386,9 @@
                 <span class="flex items-center gap-2"><span>🤖</span> Auto-Clicker</span>
                 <span class="text-[10px] ${S.autoClicker ? 'text-green-400' : 'text-gray-500'} font-bold">${S.autoClicker ? 'ON' : 'OFF'}</span>
               </button>
-              <button onclick="S.theme = S.theme === 'cannabis' ? 'default' : 'cannabis'; sbUpsertUser(S.user); S.showMenu=false; render()" class="w-full text-left px-4 py-3 text-xs hover:bg-gray-800 transition-colors border-b border-gray-800 flex items-center gap-2">
-                <span>🎨</span> Skin: ${S.theme === 'cannabis' ? 'Erva' : 'Grão'}
+              <button onclick="S.theme = S.theme === 'cannabis' ? 'default' : 'cannabis'; sbUpsertUser(S.user); S.showMenu=false; render()" class="w-full text-left px-4 py-3 text-xs hover:bg-gray-800 transition-colors border-b border-gray-800 flex items-center justify-between gap-2">
+                <span class="flex items-center gap-2"><span>🎨</span> Skin: ${S.theme === 'cannabis' ? 'ErvaNet' : 'GrãoNet'}</span>
+                <span class="text-[10px] text-purple-400 font-bold">VIP</span>
               </button>
             ` : ''}
             ${u ? `
@@ -1622,9 +1654,12 @@
             const med = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i + 1}`;
             return `<tr class="border-b border-gray-800/50 hover:bg-gray-800/40 transition-colors ${me ? 'bg-gray-800/30' : ''}">
                 <td class="px-4 py-2">
-                  <span class="mr-1">${med}</span>
-                  <span class="${d.is_vip ? 'glow-purple' : (me ? 'text-cyan-400 font-bold' : 'text-gray-300')}">${d.name}</span>
-                  ${d.is_vip ? '<span class="ml-1 text-[8px] px-1 bg-purple-900/50 text-purple-300 border border-purple-700 rounded">VIP</span>' : ''}
+                  <div class="flex items-center gap-1">
+                    <span class="mr-1">${med}</span>
+                    ${d.is_vip ? '<span class="text-xs">👑</span>' : ''}
+                    <span class="${d.is_vip ? 'glow-gold glow-purple font-bold' : (me ? 'text-cyan-400 font-bold' : 'text-gray-300')}">${d.name}</span>
+                    ${d.is_vip ? '<span class="ml-1 text-[8px] px-1 bg-purple-900/50 text-purple-300 border border-purple-700 rounded font-bold">VIP</span>' : ''}
+                  </div>
                 </td>
                 ${ORDER.map(r => `<td class="text-center py-2 px-1 font-mono" style="color:${RARITY[r].color}">
                   ${d.counts[r] ? d.counts[r] : '<span class="text-gray-700">–</span>'}
@@ -1655,12 +1690,54 @@
 
       return `<div class="p-4 sm:p-6 max-w-4xl mx-auto">
     <h2 class="text-2xl font-bold mb-1">🛒 Mercado</h2>
-    <p class="text-gray-400 text-sm mb-5">Troque ${getLabel('grains').toLowerCase()} baseados em raridade e quantidade com a rede.</p>
+    <div class="flex gap-4 mb-5 border-b border-gray-800">
+      <button onclick="S.marketTab = 'swap'; render()" class="pb-2 text-sm font-bold transition-all ${S.marketTab !== 'brl' ? 'text-cyan-400 border-b-2 border-cyan-400' : 'text-gray-500 hover:text-gray-300'}">Trocas (P2P)</button>
+      <button onclick="S.marketTab = 'brl'; render()" class="pb-2 text-sm font-bold transition-all ${S.marketTab === 'brl' ? 'text-green-400 border-b-2 border-green-400' : 'text-gray-500 hover:text-gray-300'}">Vendas (R$ Pix)</button>
+    </div>
 
+    ${S.marketTab === 'brl' ? await renderMarketBRL() : renderMarketSwap(listings, myGrains)}
+  </div>`;
+}
+
+async function renderMarketBRL() {
+  const { data: brlListings } = await sb.from('market_listings_brl').select('*').eq('status', 'active').order('created_at', { ascending: false });
+  if (!brlListings || brlListings.length === 0) {
+    return `<div class="text-center py-20 text-gray-600">
+      <div class="text-6xl mb-4">💰</div>
+      <div class="text-lg mb-2">Nenhum item à venda por Pix</div>
+    </div>`;
+  }
+
+  return `<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+    ${brlListings.map(l => {
+      const g = { id: l.grain_id, rarity: l.grain_id.split('#')[1].charAt(0) === 'N' ? 'niobium' : 'brass' }; // Simplified rarity detection
+      // Note: In a real scenario, we'd join with the grains table to get full rarity.
+      // For now, let's just show the card.
+      return `<div class="bg-gray-900 border border-gray-800 rounded-xl p-4 hover:border-green-500 transition-all">
+        <div class="flex justify-between items-start mb-3">
+          <div>
+            <div class="text-[10px] text-gray-500">Vendedor: ${l.seller_name}</div>
+            <div class="font-bold text-lg text-white font-mono">${l.grain_id}</div>
+          </div>
+          <div class="text-right">
+            <div class="text-[10px] text-gray-500 uppercase">Preço</div>
+            <div class="text-xl font-bold text-green-400">R$ ${l.price.toFixed(2)}</div>
+          </div>
+        </div>
+        <button onclick="buyGrainBRL('${l.id}', ${l.price})" class="w-full bg-green-900 hover:bg-green-800 py-3 rounded-lg font-bold text-sm transition-all">🤝 Comprar via Pix</button>
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+
+function renderMarketSwap(listings, myGrains) {
+  const myListings = (listings || []).filter(l => l.seller_id === S.user.id);
+  const allListings = (listings || []).filter(l => l.seller_id !== S.user.id);
+  
+  return `
     <div class="bg-gray-900 rounded-lg p-4 mb-6">
       <h3 class="font-bold text-sm mb-3 text-cyan-400">+ Criar Oferta</h3>
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <!-- VENDO -->
         <div class="border border-gray-800 p-3 rounded">
           <div class="text-xs text-gray-400 mb-2 font-bold uppercase">Eu ofereço</div>
           <div class="grid grid-cols-2 gap-2 mb-2">
@@ -1676,12 +1753,11 @@
             </div>
           </div>
           <div>
-            <label class="text-[10px] text-gray-500 block mb-1">Raridade Mínima (Opcional, 0 = qualquer)</label>
+            <label class="text-[10px] text-gray-500 block mb-1">Raridade Mínima (0 = qualquer)</label>
             <input type="number" id="mkt-offer-min-nonce" value="0" class="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-xs focus:border-cyan-500 outline-none">
           </div>
         </div>
 
-        <!-- RECEBO -->
         <div class="border border-gray-800 p-3 rounded">
           <div class="text-xs text-gray-400 mb-2 font-bold uppercase">Quero receber</div>
           <div class="grid grid-cols-2 gap-2 mb-2">
@@ -1697,7 +1773,7 @@
             </div>
           </div>
           <div>
-            <label class="text-[10px] text-gray-500 block mb-1">Raridade Mínima (Opcional, 0 = qualquer)</label>
+            <label class="text-[10px] text-gray-500 block mb-1">Raridade Mínima (0 = qualquer)</label>
             <input type="number" id="mkt-asking-min-nonce" value="0" class="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-xs focus:border-cyan-500 outline-none">
           </div>
         </div>
@@ -1725,8 +1801,15 @@
       Nenhuma oferta no momento
     </div>`: `<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
       ${allListings.map(l => listingCard(l, myGrains)).join('')}
-    </div>`}
-  </div>`;
+    </div>`}`;
+}
+
+async function buyGrainBRL(listingId, price) {
+  if (!S.user) return loginWithDiscord();
+  // Aqui abriria um modal de Pix para o comprador pagar ao vendedor.
+  // Por enquanto, vamos simular ou direcionar para o sistema de pagamento.
+  toast('Iniciando processo de pagamento Pix... (Funcionalidade em breve)', 'info');
+}
     }
 
     async function pageGrain(id) {
@@ -2175,9 +2258,17 @@
               </div>
             ` : `
               <div class="text-center">
-                <p class="text-xs text-gray-400 mb-4">Escaneie o QR Code abaixo ou use o Copia e Cola para pagar <b>R$ 10,00</b></p>
+                <div class="mb-6 text-left space-y-2 bg-gray-800/50 p-4 rounded-xl border border-gray-800">
+                  <div class="text-xs font-bold text-gray-400 uppercase mb-2">Vantagens Premium:</div>
+                  <div class="flex items-center gap-2 text-xs"><span>🤖</span> <b>Auto-Clicker:</b> Mineração automática 24h.</div>
+                  <div class="flex items-center gap-2 text-xs"><span>🎨</span> <b>Skin ErvaNet:</b> Rebranding total (Cannabis).</div>
+                  <div class="flex items-center gap-2 text-xs"><span>👑</span> <b>Status VIP:</b> Nome Dourado + Brilho Roxo + Coroa.</div>
+                  <div class="flex items-center gap-2 text-xs"><span>💰</span> <b>Vendas Pix:</b> Venda itens por dinheiro real.</div>
+                </div>
+
+                <p class="text-xs text-gray-400 mb-4">Pague <b>R$ 10,00</b> para ativar o VIP vitalício:</p>
                 <div class="bg-white p-2 rounded-xl mb-4 inline-block">
-                  <img src="${m.qrcode}" class="w-48 h-48">
+                  <img src="${m.qrcode}" class="w-40 h-40">
                 </div>
                 <div class="bg-gray-800 p-3 rounded-lg mb-6 break-all">
                   <p class="text-[10px] text-gray-500 mb-1 uppercase font-bold text-left">Pix Copia e Cola</p>
@@ -2227,6 +2318,11 @@
         initPeer(); 
         startPresence(); 
         setupRealtime();
+        
+        // Auto-Clicker check on load
+        if ((S.is_vip || (S.is_trial && Date.now() < S.trial_until)) && S.autoClicker) {
+          setTimeout(() => startMining(), 3000);
+        }
       }
 
       // Re-render mining progress every 800ms
