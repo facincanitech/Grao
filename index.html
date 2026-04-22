@@ -1710,7 +1710,7 @@ async function renderMarketBRL() {
   return `
     <div class="mb-8">
       <div class="flex justify-between items-center mb-4">
-        <h3 class="text-xs font-bold text-gray-500 uppercase tracking-wider">📈 Histórico de Preços (Steam Style)</h3>
+        <h3 class="text-xs font-bold text-gray-500 uppercase tracking-wider">📈 Histórico de Preços </h3>
         <select onchange="S.mktHistoryRarity = this.value; render()" class="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-[10px] outline-none">
           ${ORDER.map(r => `<option value="${r}" ${selectedRarity === r ? 'selected' : ''}>${RARITY[r].label}</option>`).join('')}
         </select>
