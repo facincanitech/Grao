@@ -1396,7 +1396,6 @@
       }
 
       render();
-      window.scrollTo(0, 0);
     }
 
     function setupBackButton() {
@@ -2965,7 +2964,7 @@
 
       await loadLavoura();
       await updateOnlineCount();
-      await render();
+      await go(S.page || 'inventory', {}, true);
       setupBackButton();
       if (S.user) {
         initPeer();
