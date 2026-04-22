@@ -301,6 +301,25 @@
       SOUND: true
     };
 
+    const RARITY = {
+      brass: { key: 'brass', label: 'Latão', emoji: '🔶', color: '#CD7F32', zeros: 1, prefix: 'L' },
+      copper: { key: 'copper', label: 'Cobre', emoji: '🟤', color: '#B87333', zeros: 2, prefix: 'C' },
+      silver: { key: 'silver', label: 'Prata', emoji: '⚪', color: '#C0C0C0', zeros: 3, prefix: 'S' },
+      gold: { key: 'gold', label: 'Ouro', emoji: '🟡', color: '#FFD700', zeros: 4, prefix: 'G' },
+      diamond: { key: 'diamond', label: 'Diamante', emoji: '💎', color: '#00FFFF', zeros: 5, prefix: 'D' },
+      uranium: { key: 'uranium', label: 'Urânio', emoji: '☢️', color: '#39FF14', zeros: 6, prefix: 'U' },
+      opal: { key: 'opal', label: 'Opala', emoji: '🔮', color: '#FF69B4', zeros: 7, prefix: 'O' },
+      bismuth: { key: 'bismuth', label: 'Bismuto', emoji: '🌈', color: '#E8B4F8', zeros: 8, prefix: 'B' },
+      niobium: { key: 'niobium', label: 'Nióbio', emoji: '⚡', color: '#C084FC', zeros: 9, prefix: 'N' }
+    };
+    const ORDER = ['niobium', 'bismuth', 'opal', 'uranium', 'diamond', 'gold', 'silver', 'copper', 'brass'];
+    const SCORES = { niobium: 100000, bismuth: 10000, opal: 1000, uranium: 500, diamond: 100, gold: 20, silver: 5, copper: 2, brass: 1 };
+    const PLANS = {
+      mensal: { id: 'mensal_10', label: 'Mensal', price: 10.00, desc: '30 dias de VIP' },
+      bimestral: { id: 'bimestral_18', label: 'Bimestral', price: 18.00, desc: '60 dias de VIP' },
+      trimestral: { id: 'trimestral_25', label: 'Trimestral', price: 25.00, desc: '90 dias + Bônus' }
+    };
+
     const AudioEngine = {
       ctx: null,
       init() { if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)() },
@@ -499,20 +518,7 @@
     }
 
     // ═══════════════════════════════════════════════════════
-    // RARIDADES
-    // ═══════════════════════════════════════════════════════
-    const RARITY = {
-      brass: { key: 'brass', label: 'Latão', emoji: '🔶', color: '#CD7F32', zeros: 1, prefix: 'L' },
-      copper: { key: 'copper', label: 'Cobre', emoji: '🟤', color: '#B87333', zeros: 2, prefix: 'C' },
-      silver: { key: 'silver', label: 'Prata', emoji: '⚪', color: '#C0C0C0', zeros: 3, prefix: 'S' },
-      gold: { key: 'gold', label: 'Ouro', emoji: '🟡', color: '#FFD700', zeros: 4, prefix: 'G' },
-      diamond: { key: 'diamond', label: 'Diamante', emoji: '💎', color: '#00FFFF', zeros: 5, prefix: 'D' },
-      uranium: { key: 'uranium', label: 'Urânio', emoji: '☢️', color: '#39FF14', zeros: 6, prefix: 'U' },
-      opal: { key: 'opal', label: 'Opala', emoji: '🔮', color: '#FF69B4', zeros: 7, prefix: 'O' },
-      bismuth: { key: 'bismuth', label: 'Bismuto', emoji: '🌈', color: '#E8B4F8', zeros: 8, prefix: 'B' },
-      niobium: { key: 'niobium', label: 'Nióbio', emoji: '⚡', color: '#C084FC', zeros: 9, prefix: 'N' }
-    };
-    const ORDER = ['niobium', 'bismuth', 'opal', 'uranium', 'diamond', 'gold', 'silver', 'copper', 'brass'];
+    // DATABASE (Dexie / IndexedDB)
 
     // ═══════════════════════════════════════════════════════
     // DATABASE (Dexie / IndexedDB)
@@ -1619,7 +1625,6 @@
         if (g.rarity && map[uid].counts[g.rarity] !== undefined) map[uid].counts[g.rarity]++;
       }
 
-      const SCORES = { niobium: 100000, bismuth: 10000, opal: 1000, uranium: 500, diamond: 100, gold: 20, silver: 5, copper: 2, brass: 1 };
       const score = u => ORDER.reduce((s, r) => s + (u.counts[r] || 0) * SCORES[r], 0);
       const users = Object.entries(map).sort((a, b) => score(b[1]) - score(a[1]));
 
@@ -1878,27 +1883,17 @@ async function pageStore() {
         <h3 class="text-lg font-bold text-purple-400 mb-4">Planos VIP</h3>
         
         <div class="space-y-3 mb-8">
-          <div class="bg-gray-950 border border-gray-800 p-3 rounded-xl flex justify-between items-center opacity-70">
-            <div>
-              <div class="text-sm font-bold">Plano Mensal</div>
-              <div class="text-[10px] text-gray-500">30 dias de benefícios</div>
+          ${Object.entries(PLANS).map(([key, p]) => `
+            <div class="bg-gray-950 border border-gray-800 p-3 rounded-xl flex justify-between items-center group hover:border-purple-500/30 transition-all">
+              <div>
+                <div class="text-sm font-bold text-gray-200">${p.label}</div>
+                <div class="text-[10px] text-gray-500">${p.desc}</div>
+              </div>
+              <button onclick="abrirLojaVIP('${p.id}')" class="bg-purple-900/30 hover:bg-purple-600 text-purple-300 hover:text-white px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all">
+                R$ ${p.price.toFixed(2)}
+              </button>
             </div>
-            <div class="text-xs font-bold text-gray-400 italic">Em Breve</div>
-          </div>
-          <div class="bg-gray-950 border border-gray-800 p-3 rounded-xl flex justify-between items-center opacity-70">
-            <div>
-              <div class="text-sm font-bold">Plano Bimestral</div>
-              <div class="text-[10px] text-gray-500">60 dias de benefícios</div>
-            </div>
-            <div class="text-xs font-bold text-gray-400 italic">Em Breve</div>
-          </div>
-          <div class="bg-gray-950 border border-purple-900/50 p-3 rounded-xl flex justify-between items-center border-dashed">
-            <div>
-              <div class="text-sm font-bold text-purple-300">Plano Trimestral</div>
-              <div class="text-[10px] text-gray-500">90 dias + Bônus</div>
-            </div>
-            <div class="text-xs font-bold text-purple-400 italic">Em Breve</div>
-          </div>
+          `).join('')}
         </div>
 
         ${S.is_vip ? `
@@ -2375,6 +2370,32 @@ async function pageGrain(id) {
       setTimeout(tick, 500);
     }
 
+    async function abrirLojaVIP(planoId = 'mensal_10') {
+      if (!S.user) return loginWithDiscord();
+      
+      const p = Object.values(PLANS).find(x => x.id === planoId) || PLANS.mensal;
+      S.pixModal = { loading: true, plano: p };
+      render();
+
+      try {
+        const { data, error } = await sb.functions.invoke('gerar-pix-vip', {
+          body: { userId: S.user.id, plano: p.id }
+        });
+        if (error) throw error;
+        S.pixModal = { 
+          ...S.pixModal, 
+          loading: false, 
+          qrcode: data.qrcode, 
+          copia_e_cola: data.copia_e_cola 
+        };
+        render();
+      } catch (e) {
+        toast('Erro ao gerar Pix: ' + e.message, 'error');
+        S.pixModal = null;
+        render();
+      }
+    }
+
     // ═══════════════════════════════════════════════════════
     // RENDER PRINCIPAL
     // ═══════════════════════════════════════════════════════
@@ -2423,9 +2444,10 @@ async function pageGrain(id) {
                 </div>
 
                 <p class="text-[10px] text-gray-500 mb-4 px-2 italic">
-                  *Ao ativar o VIP, você concorda com a prestação imediata do serviço e renuncia ao direito de estorno após o início do uso das vantagens cosméticas e de automação.
+                  *Ao ativar o VIP (${m.plano.label}), você concorda com a prestação imediata do serviço e renuncia ao direito de estorno após o início do uso das vantagens cosméticas e de automação.
                 </p>
 
+                <p class="text-xs text-gray-400 mb-4 font-bold">Valor: R$ ${m.plano.price.toFixed(2)}</p>
                 <div class="bg-white p-2 rounded-xl mb-4 inline-block">
                   <img src="${m.qrcode}" class="w-40 h-40">
                 </div>
