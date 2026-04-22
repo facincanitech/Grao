@@ -1162,11 +1162,6 @@
     }
 
     async function announceP2PSale(grainId) {
-      if (!S.is_vip) {
-        toast('Apenas usuários VIP podem anunciar vendas por Pix!', 'warning');
-        abrirLojaVIP();
-        return;
-      }
 
       const price = prompt("Por quanto deseja vender este item? (R$)", "10.00");
       if (!price || isNaN(parseFloat(price))) return;
