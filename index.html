@@ -1810,9 +1810,8 @@ async function buyGrainBRL(listingId, price) {
   // Por enquanto, vamos simular ou direcionar para o sistema de pagamento.
   toast('Iniciando processo de pagamento Pix... (Funcionalidade em breve)', 'info');
 }
-    }
 
-    async function pageGrain(id) {
+async function pageGrain(id) {
       const g = await db.grains.where('id').equals(id).first();
       if (!g) return `<div class="p-6 text-center">
     <div class="text-4xl mb-4">❓</div>
