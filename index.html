@@ -1344,7 +1344,8 @@
         <svg class="w-4 h-4 text-indigo-500 transition-all" viewBox="0 0 71 55" fill="currentColor"><path d="M60.1 4.9A58.5 58.5 0 0 0 45.6.6a.2.2 0 0 0-.2.1 40.8 40.8 0 0 0-1.8 3.7 54 54 0 0 0-16.2 0A37.2 37.2 0 0 0 25.6.7a.2.2 0 0 0-.2-.1A58.4 58.4 0 0 0 10.9 4.9a.2.2 0 0 0-.1.1C1.6 18.7-.9 32.2.3 45.4a.2.2 0 0 0 .1.2 58.8 58.8 0 0 0 17.7 8.9.2.2 0 0 0 .2-.1 42 42 0 0 0 3.6-5.9.2.2 0 0 0-.1-.3 38.7 38.7 0 0 1-5.5-2.6.2.2 0 0 1 0-.4l1.1-.8a.2.2 0 0 1 .2 0c11.5 5.3 24 5.3 35.4 0a.2.2 0 0 1 .2 0l1.1.8a.2.2 0 0 1 0 .4 36.1 36.1 0 0 1-5.5 2.6.2.2 0 0 0-.1.3 47.1 47.1 0 0 0 3.6 5.9.2.2 0 0 0 .2.1 58.7 58.7 0 0 0 17.7-8.9.2.2 0 0 0 .1-.2c1.5-15.3-2.5-28.6-10.6-40.4a.2.2 0 0 0-.1-.1ZM23.7 37.3c-3.5 0-6.4-3.2-6.4-7.1s2.8-7.1 6.4-7.1c3.6 0 6.4 3.2 6.4 7.1 0 3.9-2.9 7.1-6.4 7.1Zm23.6 0c-3.5 0-6.4-3.2-6.4-7.1s2.8-7.1 6.4-7.1c3.6 0 6.5 3.2 6.5 7.1 0 3.9-2.9 7.1-6.5 7.1Z"/></svg>
       </button>
       ${u ? `<nav class="hidden sm:flex gap-1">
-        ${nb('inventory', '📦 Inventário')}${nb('mine', '⛏️ Minerar')}${nb('market', '🛒 Mercado')}${nb('ranking', '🏆 Ranking')}${nb('event', '🎲 Evento')}${nb('transfer', '🔄 Transferir')}
+        ${nb('inventory', '📦 Inventário')}${nb('mine', '⛏️ Minerar')}${nb('market', '🛒 Mercado')}${nb('ranking', '🏆 Ranking')}${nb('event', '🎲 Evento')}
+        <button onclick="abrirLojaVIP()" class="px-3 py-1 rounded text-sm text-purple-400 font-bold hover:text-purple-300 transition-colors">⭐ Loja</button>
       </nav>`: ''}
     </div>
     <div class="flex items-center gap-2 text-sm shrink-0">
@@ -1373,12 +1374,15 @@
                 <span class="text-[10px] ${S.notificationsEnabled ? 'text-green-400' : 'text-gray-500'} font-bold">${S.notificationsEnabled ? 'LIGADO' : 'DESLIGADO'}</span>
               </button>
             ` : ''}
-            <a href="mailto:facincanitech@gmail.com" class="w-full text-left px-4 py-3 text-xs hover:bg-gray-800 transition-colors border-b border-gray-800 flex items-center gap-2">
-              <span>📧</span> Contato
-            </a>
+            <button onclick="S.showTerms = true; S.showMenu=false; render()" class="w-full text-left px-4 py-3 text-xs hover:bg-gray-800 transition-colors border-b border-gray-800 flex items-center gap-2">
+              <span>📄</span> Termos de Uso
+            </button>
+            <button onclick="S.showCDC = true; S.showMenu=false; render()" class="w-full text-left px-4 py-3 text-xs hover:bg-gray-800 transition-colors border-b border-gray-800 flex items-center gap-2">
+              <span>⚖️</span> Lei do Consumidor
+            </button>
             ${u && !S.is_vip && !S.is_trial ? `
               <button onclick="abrirLojaVIP(); S.showMenu=false; render()" class="w-full text-left px-4 py-3 text-xs hover:bg-gray-800 transition-colors border-b border-gray-800 flex items-center gap-2 text-purple-400 font-bold">
-                <span>⭐</span> Assinar VIP (R$ 10)
+                <span>⭐</span> Loja VIP
               </button>
             ` : ''}
             ${u && (S.is_vip || S.is_trial) ? `
@@ -1691,11 +1695,12 @@
       return `<div class="p-4 sm:p-6 max-w-4xl mx-auto">
     <h2 class="text-2xl font-bold mb-1">🛒 Mercado</h2>
     <div class="flex gap-4 mb-5 border-b border-gray-800">
-      <button onclick="S.marketTab = 'swap'; render()" class="pb-2 text-sm font-bold transition-all ${S.marketTab !== 'brl' ? 'text-cyan-400 border-b-2 border-cyan-400' : 'text-gray-500 hover:text-gray-300'}">Trocas (P2P)</button>
-      <button onclick="S.marketTab = 'brl'; render()" class="pb-2 text-sm font-bold transition-all ${S.marketTab === 'brl' ? 'text-green-400 border-b-2 border-green-400' : 'text-gray-500 hover:text-gray-300'}">Vendas (R$ Pix)</button>
+      <button onclick="S.marketTab = 'swap'; render()" class="pb-2 text-sm font-bold transition-all ${S.marketTab === 'swap' || !S.marketTab ? 'text-cyan-400 border-b-2 border-cyan-400' : 'text-gray-500 hover:text-gray-300'}">Trocas</button>
+      <button onclick="S.marketTab = 'brl'; render()" class="pb-2 text-sm font-bold transition-all ${S.marketTab === 'brl' ? 'text-green-400 border-b-2 border-green-400' : 'text-gray-500 hover:text-gray-300'}">Vendas (R$)</button>
+      <button onclick="S.marketTab = 'transfer'; render()" class="pb-2 text-sm font-bold transition-all ${S.marketTab === 'transfer' ? 'text-cyan-400 border-b-2 border-cyan-400' : 'text-gray-500 hover:text-gray-300'}">Enviar</button>
     </div>
 
-    ${S.marketTab === 'brl' ? await renderMarketBRL() : renderMarketSwap(listings, myGrains)}
+    ${S.marketTab === 'brl' ? await renderMarketBRL() : S.marketTab === 'transfer' ? await pageTransfer() : renderMarketSwap(listings, myGrains)}
   </div>`;
 }
 
@@ -2265,7 +2270,10 @@ async function pageGrain(id) {
                   <div class="flex items-center gap-2 text-xs text-gray-500"><span>🎨</span> <b>Skins (Em Breve):</b> Temas exclusivos.</div>
                 </div>
 
-                <p class="text-xs text-gray-400 mb-4">Pague <b>R$ 10,00</b> para ativar o VIP vitalício:</p>
+                <p class="text-[10px] text-gray-500 mb-4 px-2 italic">
+                  *Ao ativar o VIP, você concorda com a prestação imediata do serviço e renuncia ao direito de estorno após o início do uso das vantagens cosméticas e de automação.
+                </p>
+
                 <div class="bg-white p-2 rounded-xl mb-4 inline-block">
                   <img src="${m.qrcode}" class="w-40 h-40">
                 </div>
@@ -2289,6 +2297,44 @@ async function pageGrain(id) {
       }
 
       if (S.page === 'mine' && !S.mining) startCdTimer();
+
+      if (S.showTerms) {
+        const modal = document.createElement('div');
+        modal.className = 'fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm fade-in';
+        modal.innerHTML = `
+          <div class="bg-gray-900 border border-gray-800 rounded-2xl p-6 max-w-lg w-full shadow-2xl overflow-y-auto max-h-[80vh]">
+            <div class="flex justify-between items-center mb-6">
+              <h3 class="text-xl font-bold text-cyan-400">📄 Termos de Uso</h3>
+              <button onclick="S.showTerms = false; render()" class="text-gray-500 hover:text-white text-2xl">&times;</button>
+            </div>
+            <div class="text-xs text-gray-300 space-y-4 leading-relaxed">
+              <p><b>1. Natureza do Serviço:</b> O GrãoNet é uma plataforma de entretenimento e conveniência baseada em colecionáveis virtuais. Os "Grãos" e "Skins" são bens digitais sem valor monetário real oficial.</p>
+              <p><b>2. Itens Digitais:</b> Os itens obtidos através da mineração ou eventos são para fins estéticos e de colecionismo dentro do ambiente do sistema.</p>
+              <p><b>3. Conduta:</b> O uso de scripts externos não autorizados ou exploração de bugs para ganho indevido resultará em banimento da conta.</p>
+              <p><b>4. Responsabilidade:</b> Não nos responsabilizamos por perdas decorrentes de mau uso da conta ou compartilhamento de códigos de transferência.</p>
+            </div>
+          </div>`;
+        app.appendChild(modal);
+      }
+
+      if (S.showCDC) {
+        const modal = document.createElement('div');
+        modal.className = 'fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm fade-in';
+        modal.innerHTML = `
+          <div class="bg-gray-900 border border-gray-800 rounded-2xl p-6 max-w-lg w-full shadow-2xl overflow-y-auto max-h-[80vh]">
+            <div class="flex justify-between items-center mb-6">
+              <h3 class="text-xl font-bold text-yellow-500">⚖️ CDC e Reembolso</h3>
+              <button onclick="S.showCDC = false; render()" class="text-gray-500 hover:text-white text-2xl">&times;</button>
+            </div>
+            <div class="text-xs text-gray-300 space-y-4 leading-relaxed">
+              <p><b>Consumo Imediato:</b> Como o VIP libera instantaneamente vantagens como o Glow Roxo e o Auto-Clicker, o serviço é considerado totalmente prestado no momento da ativação.</p>
+              <p><b>Direito de Arrependimento:</b> Uma vez que o conteúdo digital foi acessado ou o serviço de automação foi iniciado, o usuário renuncia ao direito de estorno, visto que o benefício já foi consumido.</p>
+              <p><b>Transparência:</b> Oferecemos um período de teste gratuito (Trial de 1h) para que o usuário avalie a qualidade e funcionalidade do serviço antes de realizar qualquer pagamento.</p>
+              <p><b>Logs de Uso:</b> Mantemos registros (logs) de atividade para comprovar a prestação do serviço em caso de disputas.</p>
+            </div>
+          </div>`;
+        app.appendChild(modal);
+      }
     }
 
     // ═══════════════════════════════════════════════════════
