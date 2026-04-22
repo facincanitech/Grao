@@ -659,10 +659,10 @@
     // ═══════════════════════════════════════════════════════
     // MINERAÇÃO
     // ═══════════════════════════════════════════════════════
-    async function startMining() {
+    async function startMining(silent = false) {
       if (!S.user) { AudioEngine.play('error'); toast('Faça login primeiro!', 'error'); return }
       if (S.mining) return;
-      AudioEngine.play('click');
+      if (!silent) AudioEngine.play('click');
 
       // Checa cooldown no Supabase (sincroniza entre dispositivos)
       try {
@@ -1329,8 +1329,11 @@
     // ═══════════════════════════════════════════════════════
     // NAV & HISTÓRICO (Botão Voltar)
     // ═══════════════════════════════════════════════════════
-    async function go(page, params = {}) {
-      AudioEngine.play('click');
+    async function go(page, params = {}, silent = false) {
+      if (!silent) {
+        AudioEngine.play('click');
+        window.scrollTo(0, 0);
+      }
       S.page = page;
       S.params = params;
 
@@ -2762,9 +2765,11 @@
             btn.innerHTML = `⛏️ Começar ${getLabel('mining')}`;
           }
           // Se autoClicker estiver on e não estiver minerando agora, clica
-          if (S.autoClicker && !S.mining && (S.is_vip || (S.is_trial && Date.now() < S.trial_until))) {
-            toast('🤖 Auto-Clicker: Iniciando nova mineração...', 'info');
-            startMining();
+          const canAuto = S.is_vip || (S.is_trial && Date.now() < S.trial_until);
+          if (S.autoClicker && !S.mining && canAuto) {
+            console.log('🤖 Auto-Clicker Triggered');
+            toast('🤖 Auto-Clicker: Iniciando...', 'info', 1500);
+            startMining(true); // Silent start
           }
           setTimeout(tick, 1000); // Keep checking for next mine
           return;
