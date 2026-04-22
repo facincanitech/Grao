@@ -513,7 +513,7 @@
     }
 
     function setupRealtime() {
-      if (!S.user) return;
+      if (!S.user || S.realtimeSubscribed) return;
 
       const channel = sb.channel('global')
         .on('broadcast', { event: 'vip_activated' }, ({ payload }) => {
@@ -533,7 +533,9 @@
         .on('postgres_changes', { event: '*', schema: 'public', table: 'market_listings_brl' }, () => {
           if (S.page === 'market') go('market', {}, true);
         })
-        .subscribe();
+        .subscribe((status) => {
+          if (status === 'SUBSCRIBED') S.realtimeSubscribed = true;
+        });
     }
 
 
@@ -872,7 +874,6 @@
         updateNetworkSize();
         await syncFromSupabase(user.id);
         syncLocalGrains(user.id);
-        setupRealtime(); // Inicializa Realtime para VIP
         return true;
       } catch (e) {
         toast('Erro ao autenticar com Discord', 'error');
@@ -882,6 +883,7 @@
 
     function logout() {
       S.user = null;
+      S.realtimeSubscribed = false;
       if (window._peer) try { window._peer.destroy() } catch (e) { }
       db.settings.delete('discordUser');
       render();
