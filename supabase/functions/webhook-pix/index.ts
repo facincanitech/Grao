@@ -52,34 +52,14 @@ serve(async (req: Request) => {
       .single()
 
     if (listing) {
-      // A. Transferir o item para o comprador
-      const { error: errUpdateGrain } = await supabase
-        .from('grains')
-        .update({ 
-          owner: listing.buyer_id, 
-          lock_trade: false          
-        })
-        .eq('id', listing.grain_id)
-
-      if (errUpdateGrain) throw errUpdateGrain
-
-      // B. Marcar o anúncio como concluído
-      await supabase
-        .from('market_listings_brl')
-        .update({ 
-          status: 'sold',
-          sold_at: new Date().toISOString()
-        })
-        .eq('id', listing.id)
-
-      // C. Creditar o saldo ao vendedor (valor - taxa de 10%)
-      const valorLiquido = Number(listing.price) * 0.90
-      await supabase.rpc('increment_user_balance', { 
-        uid: listing.seller_id, 
-        amount: valorLiquido 
+      // Usar a RPC atômica para liquidar a venda
+      const { error: rpcError } = await supabase.rpc('process_p2p_liquidation', { 
+        target_txid: txid 
       })
 
-      // D. Notificar via Realtime (opcional, mas bom para UX)
+      if (rpcError) throw rpcError
+
+      // Notificar vendedor e comprador via Realtime
       await supabase.channel('global').send({
         type: 'broadcast',
         event: 'p2p_sale_confirmed',
@@ -87,7 +67,8 @@ serve(async (req: Request) => {
           listingId: listing.id,
           grainId: listing.grain_id,
           sellerId: listing.seller_id,
-          buyerId: listing.buyer_id
+          buyerId: listing.buyer_id,
+          amount: Number(listing.price) * 0.90
         }
       })
 
