@@ -1887,7 +1887,7 @@
             </div>
             <div class="text-right">
               <div class="text-xs font-bold text-green-400 mb-1">R$ ${parseFloat(l.price).toFixed(2)}</div>
-              <button onclick="solicitarCompraP2P('${l.id}', '${l.seller_name}')" class="bg-gray-800 hover:bg-green-600 text-white text-[10px] px-3 py-1 rounded font-bold transition-all">COMPRAR</button>
+              <button onclick="solicitarCompraP2P('${l.id}')" class="bg-gray-800 hover:bg-green-600 text-white text-[10px] px-3 py-1 rounded font-bold transition-all">COMPRAR</button>
             </div>
           </div>
         `).join('')}
@@ -1896,7 +1896,7 @@
   `;
     }
 
-    async function solicitarCompraP2P(listingId, sellerName) {
+    async function solicitarCompraP2P(listingId) {
       S.pixModal = { loading: true };
       render();
 
@@ -2953,44 +2953,52 @@
     // INICIALIZAÇÃO
     // ═══════════════════════════════════════════════════════
     async function init() {
-      const fromDiscord = await handleDiscordCallback();
-      if (!fromDiscord) {
-        const saved = await db.settings.get('discordUser');
-        if (saved?.value) {
-          S.user = saved.value;
-          sbUpsertUser(S.user);
-          updateNetworkSize();
-          await syncFromSupabase(S.user.id);
-          syncLocalGrains(S.user.id);
+      try {
+        const fromDiscord = await handleDiscordCallback();
+        if (!fromDiscord) {
+          const saved = await db.settings.get('discordUser');
+          if (saved?.value) {
+            S.user = saved.value;
+            sbUpsertUser(S.user);
+            updateNetworkSize();
+            await syncFromSupabase(S.user.id);
+            syncLocalGrains(S.user.id);
+          }
         }
+        const notifPref = await db.settings.get('notificationsEnabled');
+        if (notifPref) S.notificationsEnabled = notifPref.value;
+
+        await loadLavoura();
+        await updateOnlineCount();
+        await go(S.page || 'inventory', {}, true);
+        setupBackButton();
+        
+        if (S.user) {
+          initPeer();
+          startPresence();
+          setupRealtime();
+
+          if ((S.is_vip || (S.is_trial && Date.now() < S.trial_until)) && S.autoClicker) {
+            setTimeout(() => startMining(), 3000);
+          }
+        }
+
+        setInterval(() => {
+          if (S.page === 'mine' && S.mining) {
+            const bar = document.querySelector('.progress-bar');
+            const hashrate = document.querySelector('.hashrate-val');
+            if (bar) bar.style.width = S.miningProgress + '%';
+            if (hashrate) hashrate.textContent = S.hashrate.toLocaleString();
+          }
+        }, 800);
+      } catch (err) {
+        console.error('CRITICAL INIT ERROR:', err);
+        document.body.innerHTML = `<div style="padding:20px; color:red; font-family:sans-serif;">
+          <h2>Erro de Inicialização</h2>
+          <p>${err.message}</p>
+          <button onclick="location.reload()" style="background:#444; color:white; border:none; padding:10px 20px; border-radius:5px;">Recarregar</button>
+        </div>`;
       }
-      const notifPref = await db.settings.get('notificationsEnabled');
-      if (notifPref) S.notificationsEnabled = notifPref.value;
-
-      await loadLavoura();
-      await updateOnlineCount();
-      await go(S.page || 'inventory', {}, true);
-      setupBackButton();
-      if (S.user) {
-        initPeer();
-        startPresence();
-        setupRealtime();
-
-        // Auto-Clicker check on load
-        if ((S.is_vip || (S.is_trial && Date.now() < S.trial_until)) && S.autoClicker) {
-          setTimeout(() => startMining(), 3000);
-        }
-      }
-
-      // Re-render mining progress every 800ms - selectively
-      setInterval(() => {
-        if (S.page === 'mine' && S.mining) {
-          const bar = document.querySelector('.progress-bar');
-          const hashrate = document.querySelector('.hashrate-val');
-          if (bar) bar.style.width = S.miningProgress + '%';
-          if (hashrate) hashrate.textContent = S.hashrate.toLocaleString();
-        }
-      }, 800);
     }
 
     init();
