@@ -1334,11 +1334,11 @@
 
       // Pré-carregamento de dados para evitar flickering
       if (page === 'inventory') {
-        S.data.inventory = await db.grains.where('owner').equals(S.user.id).toArray();
+        if (S.user) S.data.inventory = await db.grains.where('owner').equals(S.user.id).toArray();
       } else if (page === 'market') {
         const { data: listings } = await sb.from('market_listings_v2').select('*').eq('status', 'active').order('created_at', { ascending: false });
         S.data.marketListings = listings || [];
-        S.data.inventory = await db.grains.where('owner').equals(S.user.id).toArray();
+        if (S.user) S.data.inventory = await db.grains.where('owner').equals(S.user.id).toArray();
 
         if (S.marketTab === 'brl') {
           const selectedRarity = S.mktHistoryRarity || 'brass';
@@ -1346,13 +1346,18 @@
           const { data: listingsBRL } = await sb.from('market_listings_brl').select('*').order('created_at', { ascending: false });
           S.data.marketBRLHistory = history || [];
           S.data.marketBRLListings = listingsBRL || [];
-          // Buscar perfil para saldo
-          const { data: profile } = await sb.from('users').select('real_balance').eq('discord_id', S.user.id).single();
-          S.user_profile = profile;
+          
+          if (S.user) {
+            // Buscar perfil para saldo
+            const { data: profile } = await sb.from('users').select('real_balance').eq('discord_id', S.user.id).single();
+            S.user_profile = profile;
+          }
         } else if (S.marketTab === 'transfer') {
-          const transfers = await db.transfers.where('from_user').equals(S.user.id).or('to_user').equals(S.user.id)
-            .reverse().limit(15).toArray();
-          S.data.transfers = transfers || [];
+          if (S.user) {
+            const transfers = await db.transfers.where('from_user').equals(S.user.id).or('to_user').equals(S.user.id)
+              .reverse().limit(15).toArray();
+            S.data.transfers = transfers || [];
+          }
         }
       } else if (page === 'ranking') {
         try {
@@ -1368,25 +1373,27 @@
           S.data.rankingSource = 'local';
         }
       } else if (page === 'mine') {
-        S.data.inventory = await db.grains.where('owner').equals(S.user.id).toArray();
+        if (S.user) S.data.inventory = await db.grains.where('owner').equals(S.user.id).toArray();
       } else if (page === 'store' || page === 'bank') {
-        const { data: profile } = await sb.from('users').select('real_balance, total_withdrawn').eq('discord_id', S.user.id).single();
-        S.user_profile = profile;
-        if (page === 'bank') {
-          const { data: history } = await sb.from('market_listings_brl')
-            .select('*')
-            .or(`seller_id.eq.${S.user.id},buyer_id.eq.${S.user.id}`)
-            .eq('status', 'sold')
-            .order('sold_at', { ascending: false })
-            .limit(15);
-          S.data.bankHistory = history || [];
+        if (S.user) {
+          const { data: profile } = await sb.from('users').select('real_balance, total_withdrawn').eq('discord_id', S.user.id).single();
+          S.user_profile = profile;
+          if (page === 'bank') {
+            const { data: history } = await sb.from('market_listings_brl')
+              .select('*')
+              .or(`seller_id.eq.${S.user.id},buyer_id.eq.${S.user.id}`)
+              .eq('status', 'sold')
+              .order('sold_at', { ascending: false })
+              .limit(15);
+            S.data.bankHistory = history || [];
 
-          const { data: withdrawals } = await sb.from('withdrawal_requests')
-            .select('*')
-            .eq('user_id', S.user.id)
-            .order('created_at', { ascending: false })
-            .limit(10);
-          S.data.withdrawalHistory = withdrawals || [];
+            const { data: withdrawals } = await sb.from('withdrawal_requests')
+              .select('*')
+              .eq('user_id', S.user.id)
+              .order('created_at', { ascending: false })
+              .limit(10);
+            S.data.withdrawalHistory = withdrawals || [];
+          }
         }
       }
 
@@ -2961,8 +2968,10 @@
             S.user = saved.value;
             sbUpsertUser(S.user);
             updateNetworkSize();
-            await syncFromSupabase(S.user.id);
-            syncLocalGrains(S.user.id);
+            if (S.user?.id) {
+              await syncFromSupabase(S.user.id);
+              syncLocalGrains(S.user.id);
+            }
           }
         }
         const notifPref = await db.settings.get('notificationsEnabled');
