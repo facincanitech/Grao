@@ -1155,7 +1155,8 @@
         seller_id: S.user.id,
         seller_name: S.user.global_name || S.user.username,
         grain_id: grainId,
-        price: parseFloat(price)
+        price: parseFloat(price),
+        rarity: g.rarity
       });
 
       if (error) {
@@ -1345,7 +1346,7 @@
       </button>
       ${u ? `<nav class="hidden sm:flex gap-1">
         ${nb('inventory', '📦 Inventário')}${nb('mine', '⛏️ Minerar')}${nb('market', '🛒 Mercado')}${nb('ranking', '🏆 Ranking')}${nb('event', '🎲 Evento')}
-        <button onclick="abrirLojaVIP()" class="px-3 py-1 rounded text-sm text-purple-400 font-bold hover:text-purple-300 transition-colors">⭐ Loja</button>
+        <button onclick="go('store')" class="px-3 py-1 rounded text-sm transition-colors ${S.page === 'store' ? 'bg-purple-900/50 text-purple-300 border border-purple-700/50' : 'text-purple-400 font-bold hover:text-purple-300'}">⭐ Loja</button>
       </nav>`: ''}
     </div>
     <div class="flex items-center gap-2 text-sm shrink-0">
@@ -1380,21 +1381,6 @@
             <button onclick="S.showCDC = true; S.showMenu=false; render()" class="w-full text-left px-4 py-3 text-xs hover:bg-gray-800 transition-colors border-b border-gray-800 flex items-center gap-2">
               <span>⚖️</span> Lei do Consumidor
             </button>
-            ${u && !S.is_vip && !S.is_trial ? `
-              <button onclick="abrirLojaVIP(); S.showMenu=false; render()" class="w-full text-left px-4 py-3 text-xs hover:bg-gray-800 transition-colors border-b border-gray-800 flex items-center gap-2 text-purple-400 font-bold">
-                <span>⭐</span> Loja VIP
-              </button>
-            ` : ''}
-            ${u && (S.is_vip || S.is_trial) ? `
-              <button onclick="S.autoClicker = !S.autoClicker; S.showMenu=false; render()" class="w-full text-left px-4 py-3 text-xs hover:bg-gray-800 transition-colors border-b border-gray-800 flex items-center justify-between gap-2">
-                <span class="flex items-center gap-2"><span>🤖</span> Auto-Clicker</span>
-                <span class="text-[10px] ${S.autoClicker ? 'text-green-400' : 'text-gray-500'} font-bold">${S.autoClicker ? 'ON' : 'OFF'}</span>
-              </button>
-              <button onclick="S.theme = S.theme === 'cannabis' ? 'default' : 'cannabis'; sbUpsertUser(S.user); S.showMenu=false; render()" class="w-full text-left px-4 py-3 text-xs hover:bg-gray-800 transition-colors border-b border-gray-800 flex items-center justify-between gap-2">
-                <span class="flex items-center gap-2"><span>🎨</span> Skin: ${S.theme === 'cannabis' ? 'ErvaNet' : 'GrãoNet'}</span>
-                <span class="text-[10px] text-purple-400 font-bold">VIP</span>
-              </button>
-            ` : ''}
             ${u ? `
               <button onclick="logout(); S.showMenu=false; render()" class="w-full text-left px-4 py-3 text-xs hover:bg-gray-800 transition-colors text-red-400 flex items-center gap-2">
                 <span>🚪</span> Sair
@@ -1706,33 +1692,93 @@
 
 async function renderMarketBRL() {
   const { data: brlListings } = await sb.from('market_listings_brl').select('*').eq('status', 'active').order('created_at', { ascending: false });
-  if (!brlListings || brlListings.length === 0) {
-    return `<div class="text-center py-20 text-gray-600">
-      <div class="text-6xl mb-4">💰</div>
-      <div class="text-lg mb-2">Nenhum item à venda por Pix</div>
-    </div>`;
-  }
+  
+  // Get history data for the graph
+  const selectedRarity = S.mktHistoryRarity || 'brass';
+  const { data: history } = await sb.from('market_listings_brl')
+    .select('price, sold_at')
+    .eq('status', 'sold')
+    .eq('rarity', selectedRarity)
+    .order('sold_at', { ascending: true })
+    .limit(20);
 
-  return `<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-    ${brlListings.map(l => {
-      const g = { id: l.grain_id, rarity: l.grain_id.split('#')[1].charAt(0) === 'N' ? 'niobium' : 'brass' }; // Simplified rarity detection
-      // Note: In a real scenario, we'd join with the grains table to get full rarity.
-      // For now, let's just show the card.
-      return `<div class="bg-gray-900 border border-gray-800 rounded-xl p-4 hover:border-green-500 transition-all">
-        <div class="flex justify-between items-start mb-3">
-          <div>
-            <div class="text-[10px] text-gray-500">Vendedor: ${l.seller_name}</div>
-            <div class="font-bold text-lg text-white font-mono">${l.grain_id}</div>
+  return `
+    <div class="mb-8">
+      <div class="flex justify-between items-center mb-4">
+        <h3 class="text-xs font-bold text-gray-500 uppercase tracking-wider">📈 Histórico de Preços (Steam Style)</h3>
+        <select onchange="S.mktHistoryRarity = this.value; render()" class="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-[10px] outline-none">
+          ${ORDER.map(r => `<option value="${r}" ${selectedRarity === r ? 'selected' : ''}>${RARITY[r].label}</option>`).join('')}
+        </select>
+      </div>
+      <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 h-48 relative overflow-hidden group">
+        ${renderMktHistoryGraph(history || [])}
+      </div>
+    </div>
+
+    <h3 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-4">💎 Itens à Venda</h3>
+    ${(!brlListings || brlListings.length === 0) ? `
+      <div class="text-center py-12 text-gray-600">
+        <div class="text-4xl mb-4">💰</div>
+        <div class="text-sm">Nenhum item à venda no momento</div>
+      </div>
+    ` : `<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      ${brlListings.map(l => {
+        const r = ORDER.find(x => l.grain_id.includes('#' + x.charAt(0).toUpperCase())) || 'brass';
+        return `<div class="bg-gray-900 border border-gray-800 rounded-xl p-4 hover:border-green-500/50 transition-all shadow-lg hover:shadow-green-900/10">
+          <div class="flex justify-between items-start mb-3">
+            <div>
+              <div class="text-[9px] text-gray-600">Vendedor: ${l.seller_name}</div>
+              <div class="font-bold text-sm text-white font-mono">${l.grain_id}</div>
+            </div>
+            <div class="text-right">
+              <div class="text-[9px] text-gray-500 uppercase font-bold">Preço</div>
+              <div class="text-lg font-bold text-green-400">R$ ${l.price.toFixed(2)}</div>
+            </div>
           </div>
-          <div class="text-right">
-            <div class="text-[10px] text-gray-500 uppercase">Preço</div>
-            <div class="text-xl font-bold text-green-400">R$ ${l.price.toFixed(2)}</div>
-          </div>
-        </div>
-        <button onclick="buyGrainBRL('${l.id}', ${l.price})" class="w-full bg-green-900 hover:bg-green-800 py-3 rounded-lg font-bold text-sm transition-all">🤝 Comprar via Pix</button>
-      </div>`;
-    }).join('')}
-  </div>`;
+          <button onclick="buyGrainBRL('${l.id}', ${l.price})" class="w-full bg-green-900/50 hover:bg-green-600 text-green-100 py-2.5 rounded-lg font-bold text-xs transition-all border border-green-700/50">🤝 Comprar Agora</button>
+        </div>`;
+      }).join('')}
+    </div>`}
+  `;
+}
+
+function renderMktHistoryGraph(data) {
+  if (data.length < 2) {
+    return `<div class="absolute inset-0 flex items-center justify-center text-gray-600 text-[10px]">Dados insuficientes para gerar o gráfico</div>`;
+  }
+  
+  const prices = data.map(d => d.price);
+  const min = Math.min(...prices) * 0.9;
+  const max = Math.max(...prices) * 1.1;
+  const range = max - min;
+  
+  const width = 1000;
+  const height = 200;
+  const points = data.map((d, i) => {
+    const x = (i / (data.length - 1)) * width;
+    const y = height - ((d.price - min) / range) * height;
+    return `${x},${y}`;
+  }).join(' ');
+
+  return `
+    <svg viewBox="0 0 ${width} ${height}" class="w-full h-full preserve-3d" preserveAspectRatio="none">
+      <defs>
+        <linearGradient id="grad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" style="stop-color:#22c55e;stop-opacity:0.2" />
+          <stop offset="100%" style="stop-color:#22c55e;stop-opacity:0" />
+        </linearGradient>
+      </defs>
+      <path d="M 0,${height} L ${points} L ${width},${height} Z" fill="url(#grad)" />
+      <polyline fill="none" stroke="#22c55e" stroke-width="3" points="${points}" stroke-linejoin="round" stroke-linecap="round" />
+      ${data.map((d, i) => {
+        const x = (i / (data.length - 1)) * width;
+        const y = height - ((d.price - min) / range) * height;
+        return `<circle cx="${x}" cy="${y}" r="4" fill="#22c55e" class="hover:r-6 transition-all cursor-pointer"><title>R$ ${d.price.toFixed(2)}</title></circle>`;
+      }).join('')}
+    </svg>
+    <div class="absolute top-2 left-2 text-[8px] text-gray-600">R$ ${max.toFixed(2)}</div>
+    <div class="absolute bottom-2 left-2 text-[8px] text-gray-600">R$ ${min.toFixed(2)}</div>
+  `;
 }
 
 function renderMarketSwap(listings, myGrains) {
@@ -1814,6 +1860,112 @@ async function buyGrainBRL(listingId, price) {
   // Aqui abriria um modal de Pix para o comprador pagar ao vendedor.
   // Por enquanto, vamos simular ou direcionar para o sistema de pagamento.
   toast('Iniciando processo de pagamento Pix... (Funcionalidade em breve)', 'info');
+}
+
+async function pageStore() {
+  if (!S.user) return pageLogin();
+  
+  return `<div class="p-4 sm:p-6 max-w-4xl mx-auto">
+    <div class="flex items-center justify-between mb-6">
+      <h2 class="text-2xl font-bold">⭐ Loja Premium</h2>
+      ${(S.is_vip || S.is_trial) ? '<span class="px-3 py-1 bg-purple-900/50 text-purple-300 border border-purple-700/50 rounded-full text-xs font-bold">STATUS: ATIVO</span>' : ''}
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-6">
+      <!-- BENEFICIOS VIP -->
+      <div class="bg-gray-900 border border-purple-900/30 rounded-2xl p-6 relative overflow-hidden">
+        <div class="absolute -right-10 -top-10 text-9xl opacity-5">👑</div>
+        <h3 class="text-lg font-bold text-purple-400 mb-4">Planos VIP</h3>
+        
+        <div class="space-y-3 mb-8">
+          <div class="bg-gray-950 border border-gray-800 p-3 rounded-xl flex justify-between items-center opacity-70">
+            <div>
+              <div class="text-sm font-bold">Plano Mensal</div>
+              <div class="text-[10px] text-gray-500">30 dias de benefícios</div>
+            </div>
+            <div class="text-xs font-bold text-gray-400 italic">Em Breve</div>
+          </div>
+          <div class="bg-gray-950 border border-gray-800 p-3 rounded-xl flex justify-between items-center opacity-70">
+            <div>
+              <div class="text-sm font-bold">Plano Bimestral</div>
+              <div class="text-[10px] text-gray-500">60 dias de benefícios</div>
+            </div>
+            <div class="text-xs font-bold text-gray-400 italic">Em Breve</div>
+          </div>
+          <div class="bg-gray-950 border border-purple-900/50 p-3 rounded-xl flex justify-between items-center border-dashed">
+            <div>
+              <div class="text-sm font-bold text-purple-300">Plano Trimestral</div>
+              <div class="text-[10px] text-gray-500">90 dias + Bônus</div>
+            </div>
+            <div class="text-xs font-bold text-purple-400 italic">Em Breve</div>
+          </div>
+        </div>
+
+        ${S.is_vip ? `
+          <div class="bg-gray-950 rounded-xl p-4 border border-gray-800">
+            <div class="text-xs font-bold text-gray-400 mb-3 uppercase tracking-wider">Configurações VIP</div>
+            <div class="space-y-3">
+              <div class="flex justify-between items-center">
+                <span class="text-xs">🤖 Auto-Clicker</span>
+                <button onclick="S.autoClicker = !S.autoClicker; render()" class="px-4 py-1.5 rounded-lg text-[10px] font-bold transition-all ${S.autoClicker ? 'bg-green-600 text-white' : 'bg-gray-800 text-gray-400'}">${S.autoClicker ? 'LIGADO' : 'DESLIGADO'}</button>
+              </div>
+              <div class="flex justify-between items-center">
+                <span class="text-xs">🎨 Skin Premium</span>
+                <button onclick="S.theme = S.theme === 'cannabis' ? 'default' : 'cannabis'; sbUpsertUser(S.user); render()" class="bg-gray-800 hover:bg-gray-700 px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all">${S.theme === 'cannabis' ? 'ErvaNet (Ativa)' : 'Ativar ErvaNet'}</button>
+              </div>
+            </div>
+          </div>
+        ` : `
+          <div class="text-center p-4 bg-gray-950 rounded-xl border border-gray-800 border-dashed mb-3">
+            <div class="text-xs text-gray-500">O sistema de assinaturas está sendo finalizado.</div>
+          </div>
+          ${!S.is_trial ? `<button onclick="ativarTrial()" class="w-full mt-1 text-[10px] text-gray-500 hover:text-white transition-colors underline">Quero testar o Auto-Clicker por 1 hora</button>` : ''}
+        `}
+      </div>
+
+      <!-- SKINS SECTION -->
+      <div class="bg-gray-900 border border-gray-800 rounded-2xl p-6">
+        <h3 class="text-lg font-bold text-gray-400 mb-4">Loja de Skins</h3>
+        
+        <div class="grid grid-cols-1 gap-3 mb-6">
+          <div class="bg-gray-950 border border-gray-800 p-4 rounded-xl flex items-center justify-between group hover:border-green-900/50 transition-all">
+            <div class="flex items-center gap-4">
+              <div class="w-12 h-12 bg-green-950/30 rounded-lg flex items-center justify-center text-2xl group-hover:scale-110 transition-transform">🌿</div>
+              <div>
+                <div class="text-sm font-bold text-gray-300">Skin Cannabis (ErvaNet)</div>
+                <div class="text-[10px] text-gray-600 italic">Rebranding total para tema canábico.</div>
+              </div>
+            </div>
+            <div class="text-[10px] font-bold text-gray-500 uppercase tracking-tighter bg-gray-900 px-2 py-1 rounded">Em Breve</div>
+          </div>
+
+          <div class="bg-gray-950 border border-gray-800 p-4 rounded-xl flex items-center justify-between group hover:border-cyan-900/50 transition-all">
+            <div class="flex items-center gap-4">
+              <div class="w-12 h-12 bg-cyan-950/30 rounded-lg flex items-center justify-center text-2xl group-hover:scale-110 transition-transform">🌌</div>
+              <div>
+                <div class="text-sm font-bold text-gray-300">Skin CyberNet (Futurista)</div>
+                <div class="text-[10px] text-gray-600 italic">Interface holográfica e neon tecnológico.</div>
+              </div>
+            </div>
+            <div class="text-[10px] font-bold text-gray-500 uppercase tracking-tighter bg-gray-900 px-2 py-1 rounded">Em Breve</div>
+          </div>
+
+          <div class="bg-gray-950 border border-gray-800 p-4 rounded-xl flex items-center justify-between opacity-50">
+            <div class="flex items-center gap-4">
+              <div class="w-12 h-12 bg-blue-950/30 rounded-lg flex items-center justify-center text-2xl">❄️</div>
+              <div>
+                <div class="text-sm font-bold text-gray-300">Skin Inverno (Gelo)</div>
+                <div class="text-[10px] text-gray-600 italic">Tema frio com efeitos de neve.</div>
+              </div>
+            </div>
+            <div class="text-[10px] font-bold text-gray-500 uppercase tracking-tighter bg-gray-900 px-2 py-1 rounded">Em Breve</div>
+          </div>
+        </div>
+        
+        <div class="text-center text-[10px] text-gray-600 mt-4 border-t border-gray-800 pt-4">As skins alteram visualmente todos os nomes e ícones do sistema exclusivamente para você.</div>
+      </div>
+    </div>
+  </div>`;
 }
 
 async function pageGrain(id) {
@@ -2235,10 +2387,10 @@ async function pageGrain(id) {
           case 'inventory': body = await pageInventory(); break;
           case 'mine': body = await pageMine(); break;
           case 'market': body = await pageMarket(); break;
-          case 'transfer': body = await pageTransfer(); break;
           case 'ranking': body = await pageRanking(); break;
           case 'event': body = await pageEvent(); break;
           case 'grain': body = await pageGrain(S.params.id); break;
+          case 'store': body = await pageStore(); break;
           default: body = await pageInventory();
         }
       } catch (e) { body = `<div class="p-6 text-red-400">Erro: ${e.message}</div>` }
