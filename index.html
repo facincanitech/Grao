@@ -325,19 +325,28 @@
 
     const Notif = {
       async request() {
-        if (!("Notification" in window)) return;
-        if (Notification.permission !== "granted") {
+        if (!("Notification" in window)) {
+          toast('Seu navegador não suporta notificações', 'error');
+          return;
+        }
+        
+        if (Notification.permission === "denied") {
+          toast('Notificações bloqueadas no navegador. Ative nas configurações do site.', 'warning');
+          S.notificationsEnabled = false;
+        } else if (Notification.permission !== "granted") {
           const res = await Notification.requestPermission();
           if (res === "granted") {
             S.notificationsEnabled = true;
-            await db.settings.put({ key: 'notificationsEnabled', value: true });
             toast('Notificações ativadas!', 'success');
+          } else {
+            S.notificationsEnabled = false;
           }
         } else {
           S.notificationsEnabled = !S.notificationsEnabled;
-          await db.settings.put({ key: 'notificationsEnabled', value: S.notificationsEnabled });
           toast(S.notificationsEnabled ? 'Notificações ativadas!' : 'Notificações desativadas', 'info');
         }
+        
+        await db.settings.put({ key: 'notificationsEnabled', value: S.notificationsEnabled });
         render();
       },
       send(title, body) {
@@ -1193,9 +1202,9 @@
         ${S.showMenu ? `
           <div class="absolute right-0 mt-2 w-48 bg-gray-900 border border-gray-800 rounded-lg shadow-xl z-50 overflow-hidden fade-in">
             ${u ? `
-              <button onclick="Notif.request(); S.showMenu=false; render()" class="w-full text-left px-4 py-3 text-xs hover:bg-gray-800 transition-colors border-b border-gray-800 flex items-center justify-between gap-2">
+              <button onclick="Notif.request()" class="w-full text-left px-4 py-3 text-xs hover:bg-gray-800 transition-colors border-b border-gray-800 flex items-center justify-between gap-2">
                 <span class="flex items-center gap-2"><span>🔔</span> Notificações</span>
-                <span class="text-[10px] ${S.notificationsEnabled ? 'text-green-400' : 'text-gray-500'} font-bold">${S.notificationsEnabled ? 'ON' : 'OFF'}</span>
+                <span class="text-[10px] ${S.notificationsEnabled ? 'text-green-400' : 'text-gray-500'} font-bold">${S.notificationsEnabled ? 'LIGADO' : 'DESLIGADO'}</span>
               </button>
             ` : ''}
             <a href="mailto:facincanitech@gmail.com" class="w-full text-left px-4 py-3 text-xs hover:bg-gray-800 transition-colors border-b border-gray-800 flex items-center gap-2">
