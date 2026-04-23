@@ -1,1 +1,1 @@
-não reutilize o código
+Proibido reutilizar o código
