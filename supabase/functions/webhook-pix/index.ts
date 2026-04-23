@@ -1,16 +1,26 @@
 // deno-lint-ignore-file
+/// <reference types="https://deno.land/x/types/index.d.ts" />
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 
 serve(async (req: Request) => {
+  // Validar secret na URL: ?secret=WEBHOOK_SECRET
+  const url = new URL(req.url)
+  const secret = url.searchParams.get('secret')
+  const expectedSecret = Deno.env.get('WEBHOOK_SECRET')
+
+  if (!expectedSecret || secret !== expectedSecret) {
+    return new Response('unauthorized', { status: 401 })
+  }
+
   try {
     const body = await req.json()
-    
+
     const pix = body.pix?.[0]
     if (!pix) return new Response('no pix data', { status: 200 })
 
     const { txid } = pix
-    
+
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -52,18 +62,16 @@ serve(async (req: Request) => {
       .single()
 
     if (listing) {
-      // Usar a RPC atômica para liquidar a venda
-      const { error: rpcError } = await supabase.rpc('process_p2p_liquidation', { 
-        target_txid: txid 
+      const { error: rpcError } = await supabase.rpc('process_p2p_liquidation', {
+        target_txid: txid
       })
 
       if (rpcError) throw rpcError
 
-      // Notificar vendedor e comprador via Realtime
       await supabase.channel('global').send({
         type: 'broadcast',
         event: 'p2p_sale_confirmed',
-        payload: { 
+        payload: {
           listingId: listing.id,
           grainId: listing.grain_id,
           sellerId: listing.seller_id,
