@@ -348,6 +348,28 @@
     };
     const ORDER = ['niobium', 'bismuth', 'opal', 'uranium', 'diamond', 'gold', 'silver', 'copper', 'brass'];
     const SCORES = { niobium: 100000, bismuth: 10000, opal: 1000, uranium: 500, diamond: 100, gold: 20, silver: 5, copper: 2, brass: 1 };
+
+    // Salva defaults para restaurar ao trocar de skin
+    const _RARITY_DEFAULTS = {};
+    for (const r in RARITY) _RARITY_DEFAULTS[r] = { label: RARITY[r].label, emoji: RARITY[r].emoji };
+
+    const SKINS = {
+      cannabis: {
+        id: 'cannabis', name: 'ErvaNet 🌿', price: 10,
+        desc: 'Muda o visual completo para tema cannabis — raridades, ícones e textos.',
+        rarities: {
+          brass:   { label: 'Prensado', emoji: '🧱' },
+          copper:  { label: 'Soltinho', emoji: '🌿' },
+          silver:  { label: 'Manga',    emoji: '🥭' },
+          gold:    { label: 'Skunk',    emoji: '🥦' },
+          diamond: { label: 'Hash',     emoji: '🎯' },
+          uranium: { label: 'Rosin',    emoji: '🧪' },
+          opal:    { label: 'Ice',      emoji: '❄️' },
+          bismuth: { label: 'Cali',     emoji: '🇺🇸' },
+          niobium: { label: 'Moonrock', emoji: '🌑' },
+        }
+      }
+    };
     const PLANS = {
       mensal: { id: 'mensal_10', label: 'Mensal', price: 10.00, desc: '30 dias de VIP' },
       bimestral: { id: 'bimestral_18', label: 'Bimestral', price: 18.00, desc: '60 dias de VIP' },
@@ -573,7 +595,8 @@
       acceptingListing: null,
       showMenu: false,
       notificationsEnabled: false,
-      theme: 'default', // 'default' ou 'cannabis'
+      theme: 'default',
+      purchased_skins: [],
       autoClicker: false,
       is_vip: false,
       is_trial: false,
@@ -591,10 +614,54 @@
 
     function getLabel(key) {
       const themes = {
-        default: { grain: 'Grão', grains: 'Grãos', mine: 'Minerar', mining: 'Mineração' },
-        cannabis: { grain: 'Grama', grains: 'Gramas', mine: 'Cultivar', mining: 'Cultivo' }
+        default:  { grain: 'Grão', grains: 'Grãos', mine: 'Minerar', mining: 'Mineração',
+                    nav_inv: '📦 Inventário', nav_mine: '⛏️ Minerar', nav_market: '🛒 Mercado/Trocas',
+                    nav_rank: '🏆 Ranking', nav_event: '🎲 Evento', nav_bank: '🏦 Banco',
+                    app_icon: '🌾', mine_icon: '⛏️', mine_btn: 'Começar Mineração' },
+        cannabis: { grain: 'Grama', grains: 'Gramas', mine: 'Cultivar', mining: 'Cultivo',
+                    nav_inv: '🌿 Gramas', nav_mine: '🌱 Cultivar', nav_market: '🏪 Dispensário',
+                    nav_rank: '🏆 Top Gramas', nav_event: '🎲 Sorteio', nav_bank: '🏦 Banco',
+                    app_icon: '🌿', mine_icon: '🌱', mine_btn: 'Começar Cultivo' }
       };
-      return themes[S.theme]?.[key] || key;
+      return themes[S.theme]?.[key] ?? themes.default[key] ?? key;
+    }
+
+    function _applyRaritySkin(themeName) {
+      const overrides = themeName === 'cannabis' ? SKINS.cannabis.rarities : _RARITY_DEFAULTS;
+      for (const r in overrides) { RARITY[r].label = overrides[r].label; RARITY[r].emoji = overrides[r].emoji; }
+    }
+
+    async function applyTheme(name) {
+      if (!['default', 'cannabis'].includes(name)) name = 'default';
+      if (name === 'cannabis' && !S.purchased_skins.includes('cannabis')) {
+        toast('Skin não adquirida! Compre na Loja.', 'warning'); return;
+      }
+      S.theme = name;
+      _applyRaritySkin(name);
+      await db.settings.put({ key: 'theme', value: name });
+      if (S.user) await sb.from('users').update({ theme: name }).eq('discord_id', S.user.id);
+      render();
+    }
+
+    async function comprarSkin(skinId) {
+      const skin = SKINS[skinId];
+      if (!skin) return;
+      if (S.purchased_skins.includes(skinId)) { toast('Você já possui esta skin!', 'info'); return; }
+      const balance = S.user_profile?.real_balance || 0;
+      if (balance < skin.price) { toast(`Saldo insuficiente. Necessário: R$ ${skin.price.toFixed(2)}`, 'error'); return; }
+      if (!confirm(`Comprar skin "${skin.name}" por R$ ${skin.price.toFixed(2)}?`)) return;
+
+      const newSkins = [...S.purchased_skins, skinId];
+      const { error } = await sb.from('users').update({
+        real_balance: balance - skin.price,
+        skins: newSkins
+      }).eq('discord_id', S.user.id);
+      if (error) { toast('Erro ao comprar: ' + error.message, 'error'); return; }
+
+      S.purchased_skins = newSkins;
+      S.user_profile = { ...S.user_profile, real_balance: balance - skin.price };
+      toast(`✅ Skin "${skin.name}" desbloqueada!`, 'success', 5000);
+      await applyTheme(skinId);
     }
 
     // ═══════════════════════════════════════════════════════
@@ -842,6 +909,7 @@
       if (profile) {
         S.is_vip = profile.is_vip || false;
         S.theme = profile.theme || 'default';
+        S.purchased_skins = profile.skins || [];
         S.is_trial = profile.is_trial || false;
         S.trial_until = profile.trial_until || 0;
         if (S.is_trial && Date.now() > S.trial_until) {
@@ -849,6 +917,7 @@
           S.autoClicker = false;
           sb.from('users').update({ is_trial: false }).eq('discord_id', S.user.id);
         }
+        _applyRaritySkin(S.theme);
       }
 
       toast(`Bem-vindo, ${S.user.global_name || S.user.username}!`, 'success');
@@ -1382,19 +1451,17 @@
     }
 
     function setupBackButton() {
-      // Duplo pushState cria uma "almofada" de segurança para cliques rápidos no Android
+      // Só ativa o interceptor de back button em mobile (evita conflito com back button do PC)
+      const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+      if (!isMobile) return;
+
       history.pushState({ trap: true }, '', window.location.href);
       history.pushState({ trap: true }, '', window.location.href);
 
-      window.addEventListener('popstate', (e) => {
-        // Sempre reativa a almofada imediatamente
+      window.addEventListener('popstate', () => {
         history.pushState({ trap: true }, '', window.location.href);
         if (!S.user) return;
-
-        // Agora, qualquer página que não seja o inventário volta para o inventário
-        if (S.page !== 'inventory') {
-          go('inventory');
-        }
+        if (S.page !== 'inventory') go('inventory');
       });
     }
 
@@ -1479,6 +1546,7 @@
     // CARD DE GRÃO
     // ═══════════════════════════════════════════════════════
     function grainCard(g, compact = false) {
+      if (!g?.id) return '';
       const r = RARITY[g.rarity];
       const first = /[A-Z]0*1$/.test(g.id);
       const dt = new Date(g.generated_at).toLocaleDateString('pt-BR');
@@ -2893,7 +2961,7 @@
           case 'ranking': body = pageRankingSync(); break;
           case 'event': body = pageEventSync(); break;
           case 'bank': body = pageBankSync(); break;
-          case 'grain': body = pageGrainSync(S.params.id); break;
+          case 'grain': body = S.params?.id ? pageGrainSync(S.params.id) : pageInventorySync(); break;
           case 'store': body = pageStoreSync(); break;
           default: body = pageInventorySync();
         }
