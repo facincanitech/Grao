@@ -1902,9 +1902,11 @@
           loading: false,
           qrcode: data.qrcode,
           copia_e_cola: data.copia_e_cola,
-          type: 'p2p'
+          type: 'p2p',
+          txid: data.txid
         };
         render();
+        iniciarPollingPix(data.txid, 'p2p');
       } catch (err) {
         S.pixModal = null;
         toast('Erro ao gerar Pix: ' + err.message, 'error');
@@ -2799,14 +2801,43 @@
           ...S.pixModal,
           loading: false,
           qrcode: data.qrcode,
-          copia_e_cola: data.copia_e_cola
+          copia_e_cola: data.copia_e_cola,
+          txid: data.txid
         };
         render();
+        iniciarPollingPix(data.txid, 'vip');
       } catch (e) {
         toast('Erro ao gerar Pix: ' + e.message, 'error');
         S.pixModal = null;
         render();
       }
+    }
+
+    // ═══════════════════════════════════════════════════════
+    // POLLING PIX
+    // ═══════════════════════════════════════════════════════
+    function iniciarPollingPix(txid, tipo) {
+      if (!txid) return;
+      let tentativas = 0;
+      const MAX = 24; // 2 minutos (24 × 5s)
+      const interval = setInterval(async () => {
+        tentativas++;
+        if (tentativas > MAX || !S.pixModal) { clearInterval(interval); return; }
+        try {
+          const { data } = await sb.functions.invoke('verificar-pix', { body: { txid, tipo } });
+          if (data?.pago) {
+            clearInterval(interval);
+            S.pixModal = null;
+            if (tipo === 'vip') {
+              S.is_vip = true;
+              toast('🎉 VIP ativado! Bem-vindo ao clube!', 'success', 6000);
+            } else {
+              toast('✅ Compra confirmada! Grão transferido.', 'success', 5000);
+            }
+            await go(S.page, {}, true);
+          }
+        } catch(e) { /* silencioso */ }
+      }, 5000);
     }
 
     // ═══════════════════════════════════════════════════════
