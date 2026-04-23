@@ -1,1 +1,7 @@
 gemini.md
+cert/
+node_modules/
+extrair-pem.mjs
+registrar-webhook.mjs
+gerar-secrets.mjs
+supabase/
