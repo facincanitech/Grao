@@ -324,12 +324,10 @@
 
   <script>
     // ═══════════════════════════════════════════════════════
-    // CONFIG — edite DISCORD_CLIENT_ID para seu app Discord
+    // CONFIG
     // ═══════════════════════════════════════════════════════
     const _u = (s) => s.split('').reverse().join('');
     const CFG = {
-      DISCORD_CLIENT_ID: '1495818274594754711',
-      get REDIRECT_URI() { return window.location.origin + window.location.pathname },
       BASE_COOLDOWN_MS: 5 * 60 * 1000,
       CHUNK_SIZE: 800,
       DISCORD_WEBHOOK_URL: _u('8q5LZYdYueZcNNDktmdjklO9OIq0x4jKYCRjO9KaSsLEmTvNlavMJKRMUrUXMB38UaCv7V/27972131459966926941/skoohbew/ipa/moc.drocsid//:sptth'),
@@ -821,71 +819,51 @@
     // DISCORD AUTH
     // ═══════════════════════════════════════════════════════
     function loginWithDiscord() {
-      if (CFG.DISCORD_CLIENT_ID === 'YOUR_DISCORD_CLIENT_ID_HERE') {
-        // Demo mode
-        S.user = { id: 'demo_' + Date.now(), username: 'DemoUser', global_name: 'Demo User', discriminator: '0', avatar: null };
-        db.settings.put({ key: 'discordUser', value: S.user });
-        toast('Modo demo ativado! Configure DISCORD_CLIENT_ID para login real.', 'info', 6000);
-        sbUpsertUser(S.user);
-        updateNetworkSize();
-        render();
-        initPeer();
-        return;
-      }
-      const url = `https://discord.com/api/oauth2/authorize` +
-        `?client_id=${CFG.DISCORD_CLIENT_ID}` +
-        `&redirect_uri=${encodeURIComponent(CFG.REDIRECT_URI)}` +
-        `&response_type=token&scope=identify`;
-      window.location.href = url;
+      sb.auth.signInWithOAuth({
+        provider: 'discord',
+        options: { redirectTo: window.location.origin + window.location.pathname }
+      });
     }
 
-    async function handleDiscordCallback() {
-      const hash = window.location.hash;
-      if (!hash || !hash.includes('access_token')) return false;
-      const p = new URLSearchParams(hash.slice(1));
-      const tk = p.get('access_token');
-      if (!tk) return false;
-      try {
-        const res = await fetch('https://discord.com/api/users/@me', { headers: { Authorization: `Bearer ${tk}` } });
-        const user = await res.json();
-        if (!user.id) throw new Error('bad response');
-        S.user = user;
-        await db.settings.put({ key: 'discordUser', value: user });
-        history.replaceState(null, '', window.location.pathname);
-        toast(`Bem-vindo, ${user.global_name || user.username}!`, 'success');
+    async function loadSession() {
+      const { data: { session } } = await sb.auth.getSession();
+      if (!session) return false;
+      const meta = session.user.user_metadata;
+      S.user = {
+        id: meta.provider_id,
+        username: meta.user_name || meta.name,
+        global_name: meta.full_name || meta.name,
+        avatar_url: meta.avatar_url,
+        avatar: null
+      };
+      history.replaceState(null, '', window.location.pathname);
 
-        // Buscar dados extras do banco
-        const { data: profile } = await sb.from('users').select('*').eq('discord_id', user.id).single();
-        if (profile) {
-          S.is_vip = profile.is_vip || false;
-          S.theme = profile.theme || 'default';
-          S.is_trial = profile.is_trial || false;
-          S.trial_until = profile.trial_until || 0;
-
-          // Verificar se o trial expirou
-          if (S.is_trial && Date.now() > S.trial_until) {
-            S.is_trial = false;
-            S.autoClicker = false;
-            sb.from('users').update({ is_trial: false }).eq('discord_id', user.id);
-          }
+      const { data: profile } = await sb.from('users').select('*').eq('discord_id', S.user.id).single();
+      if (profile) {
+        S.is_vip = profile.is_vip || false;
+        S.theme = profile.theme || 'default';
+        S.is_trial = profile.is_trial || false;
+        S.trial_until = profile.trial_until || 0;
+        if (S.is_trial && Date.now() > S.trial_until) {
+          S.is_trial = false;
+          S.autoClicker = false;
+          sb.from('users').update({ is_trial: false }).eq('discord_id', S.user.id);
         }
-
-        sbUpsertUser(user);
-        updateNetworkSize();
-        await syncFromSupabase(user.id);
-        syncLocalGrains(user.id);
-        return true;
-      } catch (e) {
-        toast('Erro ao autenticar com Discord', 'error');
-        return false;
       }
+
+      toast(`Bem-vindo, ${S.user.global_name || S.user.username}!`, 'success');
+      sbUpsertUser(S.user);
+      updateNetworkSize();
+      await syncFromSupabase(S.user.id);
+      syncLocalGrains(S.user.id);
+      return true;
     }
 
-    function logout() {
+    async function logout() {
+      await sb.auth.signOut();
       S.user = null;
       S.realtimeSubscribed = false;
       if (window._peer) try { window._peer.destroy() } catch (e) { }
-      db.settings.delete('discordUser');
       render();
     }
 
@@ -2963,19 +2941,7 @@
     // ═══════════════════════════════════════════════════════
     async function init() {
       try {
-        const fromDiscord = await handleDiscordCallback();
-        if (!fromDiscord) {
-          const saved = await db.settings.get('discordUser');
-          if (saved?.value) {
-            S.user = saved.value;
-            sbUpsertUser(S.user);
-            updateNetworkSize();
-            if (S.user?.id) {
-              await syncFromSupabase(S.user.id);
-              syncLocalGrains(S.user.id);
-            }
-          }
-        }
+        await loadSession();
         const notifPref = await db.settings.get('notificationsEnabled');
         if (notifPref) S.notificationsEnabled = notifPref.value;
 
