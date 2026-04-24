@@ -622,13 +622,27 @@
           grain: 'Grão', grains: 'Grãos', mine: 'Minerar', mining: 'Mineração',
           nav_inv: '📦 Inventário', nav_mine: '⛏️ Minerar', nav_market: '🛒 Vender',
           nav_rank: '🏆 Ranking', nav_event: '🎲 Evento', nav_bank: '🏦 Banco',
-          app_icon: '🌾', mine_icon: '⛏️', mine_btn: 'Começar Mineração'
+          app_icon: '🌾', mine_icon: '⛏️', mine_btn: 'Começar Mineração',
+          event_title: 'Evento Oficial', event_tab: 'Forja & Cassino', event_missions_tab: 'Missões Diárias',
+          event_desc: 'Queime seus grãos para forjar minérios mais raros ou tentar a sorte grande no Cassino.',
+          event_warn: 'Grãos gastos são destruídos permanentemente. A raridade Nióbio não pode ser forjada.',
+          forge_title: '🔥 A Forja', forge_desc: 'Selecione e queime 10 grãos iguais. 50% de chance de forjar 1 da raridade superior.',
+          forge_cost: 'Custo: 10x', forge_btn: '🔨 Bater o Martelo (50%)',
+          casino_title: '🎰 Cassino', casino_desc: 'Aposte 5 grãos específicos. Recompensas de 1 a 5 níveis acima (0.05% jackpot).',
+          casino_cost: 'Custo: 5x', casino_btn: '🎰 Puxar Alavanca',
         },
         cannabis: {
           grain: 'canabis', grains: 'canabiss', mine: 'Cultivar', mining: 'Cultivo',
           nav_inv: '🌿 canabiss', nav_mine: '🌱 Cultivar', nav_market: '🏪 Dispensário',
           nav_rank: '🏆 Top canabiss', nav_event: '🎲 Sorteio', nav_bank: '🏦 Banco',
-          app_icon: '🌿', mine_icon: '🌱', mine_btn: 'Começar Cultivo'
+          app_icon: '🌿', mine_icon: '🌱', mine_btn: 'Começar Cultivo',
+          event_title: 'Cultivo Especial', event_tab: 'Prensa & Roleta', event_missions_tab: 'Missões do Dia',
+          event_desc: 'Prense suas canabiss para extrair concentrados mais potentes ou tente a sorte na Roleta.',
+          event_warn: 'Canabiss gastas são destruídas permanentemente. Moonrock não pode ser prensado.',
+          forge_title: '🧱 A Prensa', forge_desc: 'Selecione e prense 10 canabiss iguais. 50% de chance de extrair 1 da qualidade superior.',
+          forge_cost: 'Custo: 10x', forge_btn: '💨 Apertar a Prensa (50%)',
+          casino_title: '🎲 Roleta', casino_desc: 'Aposte 5 canabiss específicas. Recompensas de 1 a 5 qualidades acima (0.05% jackpot).',
+          casino_cost: 'Custo: 5x', casino_btn: '🎲 Girar a Roleta',
         }
       };
       return themes[S.theme]?.[key] ?? themes.default[key] ?? key;
@@ -2683,10 +2697,10 @@
 
       if (S.eventTab === 'missions') {
         return `<div class="p-4 sm:p-6 max-w-2xl mx-auto">
-    <h2 class="text-2xl font-bold mb-1">🎲 Evento</h2>
+    <h2 class="text-2xl font-bold mb-1">🎲 ${getLabel('event_title')}</h2>
     <div class="flex gap-2 mb-6">
-      <button onclick="S.eventTab='event'; render()" class="px-4 py-1.5 rounded-lg text-xs font-bold bg-gray-800 text-gray-400 hover:text-white transition-colors">Forja & Cassino</button>
-      <button onclick="S.eventTab='missions'; render()" class="px-4 py-1.5 rounded-lg text-xs font-bold bg-cyan-900/50 text-cyan-300 border border-cyan-700/50">Missões Diárias</button>
+      <button onclick="S.eventTab='event'; render()" class="px-4 py-1.5 rounded-lg text-xs font-bold bg-gray-800 text-gray-400 hover:text-white transition-colors">${getLabel('event_tab')}</button>
+      <button onclick="S.eventTab='missions'; render()" class="px-4 py-1.5 rounded-lg text-xs font-bold bg-cyan-900/50 text-cyan-300 border border-cyan-700/50">${getLabel('event_missions_tab')}</button>
     </div>
     <div class="bg-gray-900 rounded-2xl p-5 border border-gray-800">
       <div class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">📋 Missões do dia</div>
@@ -2717,52 +2731,53 @@
   </div>`;
       }
 
+      const grain_pl = getLabel('grains');
       return `<div class="p-4 sm:p-6 max-w-5xl mx-auto">
-    <h2 class="text-2xl font-bold mb-1">🎲 Evento Oficial</h2>
+    <h2 class="text-2xl font-bold mb-1">🎲 ${getLabel('event_title')}</h2>
     <div class="flex gap-2 mb-4">
-      <button onclick="S.eventTab='event'; render()" class="px-4 py-1.5 rounded-lg text-xs font-bold bg-red-900/50 text-red-300 border border-red-700/50">Forja & Cassino</button>
-      <button onclick="S.eventTab='missions'; render()" class="px-4 py-1.5 rounded-lg text-xs font-bold bg-gray-800 text-gray-400 hover:text-white transition-colors">Missões Diárias</button>
+      <button onclick="S.eventTab='event'; render()" class="px-4 py-1.5 rounded-lg text-xs font-bold bg-red-900/50 text-red-300 border border-red-700/50">${getLabel('event_tab')}</button>
+      <button onclick="S.eventTab='missions'; render()" class="px-4 py-1.5 rounded-lg text-xs font-bold bg-gray-800 text-gray-400 hover:text-white transition-colors">${getLabel('event_missions_tab')}</button>
     </div>
-    <p class="text-gray-400 text-sm mb-4">Queime seus grãos para forjar minérios mais raros ou tentar a sorte grande no Cassino. <br><span class="text-xs text-yellow-500">Aviso: Grãos gastos são destruídos permanentemente. A raridade Nióbio não pode ser forjada.</span></p>
+    <p class="text-gray-400 text-sm mb-4">${getLabel('event_desc')} <br><span class="text-xs text-yellow-500">Aviso: ${getLabel('event_warn')}</span></p>
 
     <div class="grid md:grid-cols-2 gap-6">
-      
+
       <!-- FORJA -->
       <div class="bg-gray-900 border border-orange-900/50 rounded-xl p-5 relative overflow-hidden flex flex-col">
         <div class="absolute -right-10 -top-10 text-9xl opacity-5">🔥</div>
-        <h3 class="font-bold text-lg text-orange-400 mb-1 flex items-center gap-2">🔥 A Forja</h3>
-        <p class="text-xs text-gray-400 mb-4 h-8">Selecione e queime 10 grãos iguais. 50% de chance de forjar 1 da raridade superior.</p>
-        
+        <h3 class="font-bold text-lg text-orange-400 mb-1 flex items-center gap-2">${getLabel('forge_title')}</h3>
+        <p class="text-xs text-gray-400 mb-4 h-8">${getLabel('forge_desc')}</p>
+
         <div class="bg-gray-950 rounded p-3 mb-2 flex-1 flex flex-col">
-          <label class="text-[10px] text-gray-500 block mb-1">Selecionar Material (Custo: 10x)</label>
+          <label class="text-[10px] text-gray-500 block mb-1">Selecionar Material (${getLabel('forge_cost')})</label>
           <select id="evt-forge-sel" class="w-full bg-gray-800 border border-gray-700 rounded px-2 py-2 text-sm focus:border-orange-500 outline-none mb-2" onchange="window.updateForgePreview()">
             <option value="">-- Escolha um material --</option>
             ${forgeableOptions.map(o => `<option value="${o.id}" ${o.count < 10 ? 'disabled' : ''}>${o.emoji} ${o.label} (Você tem: ${o.count})</option>`).join('')}
           </select>
           <div id="forge-preview" class="text-xs text-gray-400 text-center py-2 bg-gray-900 rounded border border-gray-800 mb-2 min-h-[34px]"></div>
-          
+
           <div class="text-[10px] text-gray-500 mb-1 flex justify-between">
-            <span>Seus Grãos:</span>
+            <span>Seus ${grain_pl}:</span>
             <span id="forge-sel-count" class="font-bold text-orange-400">0 / 10 selecionados</span>
           </div>
           <div id="forge-item-list" class="flex-1 bg-gray-900 rounded border border-gray-800 p-2 overflow-y-auto max-h-40 flex flex-wrap gap-1 content-start scrollbar-thin">
             <div class="text-[10px] text-gray-600 w-full text-center py-4">Selecione o material acima</div>
           </div>
         </div>
-        
+
         <button onclick="doEventAction('forge')" id="btn-forge" disabled class="w-full bg-gradient-to-r from-orange-800 to-red-800 hover:from-orange-700 hover:to-red-700 py-3 rounded-lg font-bold text-sm transition-all shadow-[0_0_15px_rgba(221,107,32,0.3)] hover:shadow-[0_0_25px_rgba(221,107,32,0.5)] disabled:opacity-50 disabled:cursor-not-allowed">
-          🔨 Bater o Martelo (50%)
+          ${getLabel('forge_btn')}
         </button>
       </div>
 
-      <!-- GACHA -->
+      <!-- CASSINO -->
       <div class="bg-gray-900 border border-purple-900/50 rounded-xl p-5 relative overflow-hidden flex flex-col">
         <div class="absolute -right-10 -top-10 text-9xl opacity-5">🎰</div>
-        <h3 class="font-bold text-lg text-purple-400 mb-1 flex items-center gap-2">🎰 Cassino</h3>
-        <p class="text-xs text-gray-400 mb-4 h-8">Aposte 5 grãos específicos. Recompensas de 1 a 5 níveis de raridade acima (0.05% jackpot).</p>
+        <h3 class="font-bold text-lg text-purple-400 mb-1 flex items-center gap-2">${getLabel('casino_title')}</h3>
+        <p class="text-xs text-gray-400 mb-4 h-8">${getLabel('casino_desc')}</p>
 
         <div class="bg-gray-950 rounded p-3 mb-2 flex-1 flex flex-col">
-          <label class="text-[10px] text-gray-500 block mb-1">Selecionar Aposta (Custo: 5x)</label>
+          <label class="text-[10px] text-gray-500 block mb-1">Selecionar Aposta (${getLabel('casino_cost')})</label>
           <select id="evt-gacha-sel" class="w-full bg-gray-800 border border-gray-700 rounded px-2 py-2 text-sm focus:border-purple-500 outline-none mb-2" onchange="window.updateGachaPreview()">
             <option value="">-- Escolha um material --</option>
             ${forgeableOptions.map(o => `<option value="${o.id}" ${o.count < 5 ? 'disabled' : ''}>${o.emoji} ${o.label} (Você tem: ${o.count})</option>`).join('')}
@@ -2772,7 +2787,7 @@
           </div>
 
           <div class="text-[10px] text-gray-500 mb-1 flex justify-between">
-            <span>Seus Grãos:</span>
+            <span>Seus ${grain_pl}:</span>
             <span id="gacha-sel-count" class="font-bold text-purple-400">0 / 5 selecionados</span>
           </div>
           <div id="gacha-item-list" class="flex-1 bg-gray-900 rounded border border-gray-800 p-2 overflow-y-auto max-h-40 flex flex-wrap gap-1 content-start scrollbar-thin">
@@ -2781,7 +2796,7 @@
         </div>
 
         <button onclick="doEventAction('gacha')" id="btn-gacha" disabled class="w-full bg-gradient-to-r from-purple-800 to-pink-800 hover:from-purple-700 hover:to-pink-700 py-3 rounded-lg font-bold text-sm transition-all shadow-[0_0_15px_rgba(168,85,247,0.3)] hover:shadow-[0_0_25px_rgba(168,85,247,0.5)] disabled:opacity-50 disabled:cursor-not-allowed">
-          🎰 Puxar Alavanca
+          ${getLabel('casino_btn')}
         </button>
       </div>
 
