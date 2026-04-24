@@ -3202,7 +3202,7 @@
 
                 <p class="text-xs text-gray-400 mb-3 font-bold">Valor: R$ ${Number(m.price || m.plano?.price || 0).toFixed(2)}</p>
                 <div class="bg-white p-2 rounded-xl mb-3 inline-block">
-                  <img src="${m.qrcode}" class="w-36 h-36">
+                  <img src="${m.qrcode?.startsWith('data:') ? m.qrcode : 'data:image/png;base64,' + m.qrcode}" class="w-36 h-36">
                 </div>
                 <div class="bg-gray-800 p-2 rounded-lg mb-3 break-all">
                   <p class="text-[10px] text-gray-500 mb-1 uppercase font-bold text-left">Pix Copia e Cola</p>
