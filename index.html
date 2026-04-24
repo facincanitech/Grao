@@ -358,14 +358,14 @@
         id: 'cannabis', name: 'ErvaNet 🌿', price: 10,
         desc: 'Muda o visual completo para tema cannabis — raridades, ícones e textos.',
         rarities: {
-          brass:   { label: 'Prensado', emoji: '🧱' },
-          copper:  { label: 'Soltinho', emoji: '🌿' },
-          silver:  { label: 'Manga',    emoji: '🥭' },
-          gold:    { label: 'Skunk',    emoji: '🥦' },
-          diamond: { label: 'Hash',     emoji: '🎯' },
-          uranium: { label: 'Rosin',    emoji: '🧪' },
-          opal:    { label: 'Ice',      emoji: '❄️' },
-          bismuth: { label: 'Cali',     emoji: '🇺🇸' },
+          brass: { label: 'Prensado', emoji: '🧱' },
+          copper: { label: 'Soltinho', emoji: '🌿' },
+          silver: { label: 'Manga', emoji: '🥭' },
+          gold: { label: 'Skunk', emoji: '🥦' },
+          diamond: { label: 'Hash', emoji: '🎯' },
+          uranium: { label: 'Rosin', emoji: '🧪' },
+          opal: { label: 'Ice', emoji: '❄️' },
+          bismuth: { label: 'Cali', emoji: '🇺🇸' },
           niobium: { label: 'Moonrock', emoji: '🌑' },
         }
       }
@@ -617,14 +617,18 @@
 
     function getLabel(key) {
       const themes = {
-        default:  { grain: 'Grão', grains: 'Grãos', mine: 'Minerar', mining: 'Mineração',
-                    nav_inv: '📦 Inventário', nav_mine: '⛏️ Minerar', nav_market: '🛒 Mercado/Trocas',
-                    nav_rank: '🏆 Ranking', nav_event: '🎲 Evento', nav_bank: '🏦 Banco',
-                    app_icon: '🌾', mine_icon: '⛏️', mine_btn: 'Começar Mineração' },
-        cannabis: { grain: 'Grama', grains: 'Gramas', mine: 'Cultivar', mining: 'Cultivo',
-                    nav_inv: '🌿 Gramas', nav_mine: '🌱 Cultivar', nav_market: '🏪 Dispensário',
-                    nav_rank: '🏆 Top Gramas', nav_event: '🎲 Sorteio', nav_bank: '🏦 Banco',
-                    app_icon: '🌿', mine_icon: '🌱', mine_btn: 'Começar Cultivo' }
+        default: {
+          grain: 'Grão', grains: 'Grãos', mine: 'Minerar', mining: 'Mineração',
+          nav_inv: '📦 Inventário', nav_mine: '⛏️ Minerar', nav_market: '🛒 Vender',
+          nav_rank: '🏆 Ranking', nav_event: '🎲 Evento', nav_bank: '🏦 Banco',
+          app_icon: '🌾', mine_icon: '⛏️', mine_btn: 'Começar Mineração'
+        },
+        cannabis: {
+          grain: 'Grama', grains: 'Gramas', mine: 'Cultivar', mining: 'Cultivo',
+          nav_inv: '🌿 Gramas', nav_mine: '🌱 Cultivar', nav_market: '🏪 Dispensário',
+          nav_rank: '🏆 Top Gramas', nav_event: '🎲 Sorteio', nav_bank: '🏦 Banco',
+          app_icon: '🌿', mine_icon: '🌱', mine_btn: 'Começar Cultivo'
+        }
       };
       return themes[S.theme]?.[key] ?? themes.default[key] ?? key;
     }
@@ -853,7 +857,6 @@
       sbUpsertGrain(grain);
       sb.from('users').update({ last_mine: now }).eq('discord_id', user.id).then(() => { });
       await addGrainToLavoura(grain);
-      trackMission('mMine');
 
       S.mining = false;
       S.miningProgress = 100;
@@ -1113,7 +1116,6 @@
         if (data && !data.error) {
           S.lavoura.grains_count = data.count;
           S.myContrib = (S.myContrib || 0) + 1;
-          trackMission('mLav');
           if (data.full) await handleHarvest();
         }
       } catch (e) { }
@@ -1409,7 +1411,7 @@
           const { data: listingsBRL } = await sb.from('market_listings_brl').select('*').order('created_at', { ascending: false });
           S.data.marketBRLHistory = history || [];
           S.data.marketBRLListings = listingsBRL || [];
-          
+
           if (S.user) {
             // Buscar perfil para saldo
             const { data: profile } = await sb.from('users').select('real_balance').eq('discord_id', S.user.id).single();
@@ -1443,15 +1445,6 @@
           const localGrains = await db.grains.toArray();
           S.data.ranking = { grains: localGrains, users: [] };
           S.data.rankingSource = 'local';
-        }
-      } else if (page === 'profile') {
-        if (S.user) S.data.inventory = await db.grains.where('owner').equals(S.user.id).toArray();
-        if (!S.data.ranking?.grains?.length) {
-          try {
-            const { data: gData } = await sb.from('grains').select('id,rarity,owner,discord_user,discord_id');
-            const { data: uData } = await sb.from('users').select('discord_id,username,is_vip,theme');
-            if (gData && uData) { S.data.ranking = { grains: gData, users: uData }; S.data.rankingSource = 'global'; }
-          } catch(e) {}
         }
       } else if (page === 'mine') {
         if (S.user) S.data.inventory = await db.grains.where('owner').equals(S.user.id).toArray();
@@ -1514,7 +1507,7 @@
         <svg class="w-4 h-4 text-indigo-500 transition-all" viewBox="0 0 71 55" fill="currentColor"><path d="M60.1 4.9A58.5 58.5 0 0 0 45.6.6a.2.2 0 0 0-.2.1 40.8 40.8 0 0 0-1.8 3.7 54 54 0 0 0-16.2 0A37.2 37.2 0 0 0 25.6.7a.2.2 0 0 0-.2-.1A58.4 58.4 0 0 0 10.9 4.9a.2.2 0 0 0-.1.1C1.6 18.7-.9 32.2.3 45.4a.2.2 0 0 0 .1.2 58.8 58.8 0 0 0 17.7 8.9.2.2 0 0 0 .2-.1 42 42 0 0 0 3.6-5.9.2.2 0 0 0-.1-.3 38.7 38.7 0 0 1-5.5-2.6.2.2 0 0 1 0-.4l1.1-.8a.2.2 0 0 1 .2 0c11.5 5.3 24 5.3 35.4 0a.2.2 0 0 1 .2 0l1.1.8a.2.2 0 0 1 0 .4 36.1 36.1 0 0 1-5.5 2.6.2.2 0 0 0-.1.3 47.1 47.1 0 0 0 3.6 5.9.2.2 0 0 0 .2.1 58.7 58.7 0 0 0 17.7-8.9.2.2 0 0 0 .1-.2c1.5-15.3-2.5-28.6-10.6-40.4a.2.2 0 0 0-.1-.1ZM23.7 37.3c-3.5 0-6.4-3.2-6.4-7.1s2.8-7.1 6.4-7.1c3.6 0 6.4 3.2 6.4 7.1 0 3.9-2.9 7.1-6.4 7.1Zm23.6 0c-3.5 0-6.4-3.2-6.4-7.1s2.8-7.1 6.4-7.1c3.6 0 6.5 3.2 6.5 7.1 0 3.9-2.9 7.1-6.5 7.1Z"/></svg>
       </button>
       ${u ? `<nav class="hidden sm:flex gap-1">
-        ${nb('inventory', '📦 Inventário')}${nb('mine', '⛏️ Minerar')}${nb('bank', '🏦 Banco')}${nb('market', '🛒 Mercado')}${nb('ranking', '🏆 Ranking')}${nb('event', '🎲 Evento')}
+        ${nb('inventory', '📦 Inventário')}${nb('mine', '⛏️ Minerar')}${nb('bank', '🏦 Banco')}${nb('market', '🛒 Vender')}${nb('ranking', '🏆 Ranking')}${nb('event', '🎲 Evento')}
         <button onclick="go('store')" class="px-3 py-1 rounded text-sm transition-colors ${S.page === 'store' ? 'bg-purple-900/50 text-purple-300 border border-purple-700/50' : 'text-purple-400 font-bold hover:text-purple-300'}">⭐ Loja</button>
       </nav>`: ''}
     </div>
@@ -1533,26 +1526,16 @@
         ${S.showMenu ? `
           <div class="absolute right-0 mt-2 w-56 bg-gray-900 border border-gray-800 rounded-xl shadow-2xl z-50 overflow-hidden fade-in">
             <!-- PERFIL NO MENU -->
-            ${u ? (() => {
-              const invCounts = Object.fromEntries(ORDER.map(r => [r, 0]));
-              for (const g of (S.data.inventory || [])) if (g.rarity && invCounts[g.rarity] !== undefined) invCounts[g.rarity]++;
-              const earnedCount = getBadges(invCounts, S.is_vip).filter(b => b.earned).length;
-              const tot = Object.values(invCounts).reduce((a,b) => a+b, 0);
-              return `<button onclick="S.showMenu=false; go('profile',{uid:'${u.id}'})" class="w-full p-4 bg-gray-950 border-b border-gray-800 flex items-center gap-3 hover:bg-gray-900 transition-colors text-left">
-              ${av ? `<img src="${av}" class="w-10 h-10 rounded-full border border-gray-700 shrink-0">` : `<div class="w-10 h-10 rounded-full bg-gray-800 flex items-center justify-center shrink-0 text-lg font-bold text-gray-400">${(nm||'?').charAt(0).toUpperCase()}</div>`}
-              <div class="flex flex-col min-w-0 flex-1">
-                <span class="text-sm font-bold truncate ${S.is_vip ? 'glow-gold' : 'text-gray-200'}">${S.is_vip ? '👑 ' : ''}${nm}</span>
+            <div class="p-4 bg-gray-950 border-b border-gray-800 flex items-center gap-3">
+              ${av ? `<img src="${av}" class="w-10 h-10 rounded-full border border-gray-700">` : '<div class="w-10 h-10 rounded-full bg-gray-800 flex items-center justify-center">👤</div>'}
+              <div class="flex flex-col min-w-0">
+                <span class="text-sm font-bold truncate ${S.is_vip ? 'glow-gold glow-purple' : 'text-gray-200'}">${S.is_vip ? '👑 ' : ''}${nm}</span>
                 <div class="flex items-center gap-2 mt-0.5">
-                  ${S.is_vip ? '<span class="text-[9px] text-purple-400 font-bold">PREMIUM</span>' : '<span class="text-[9px] text-gray-500 font-bold uppercase">Free</span>'}
-                  <span class="text-[9px] text-gray-600">·</span>
-                  <span class="text-[9px] text-gray-400">${tot} grãos</span>
-                  <span class="text-[9px] text-gray-600">·</span>
-                  <span class="text-[9px] text-yellow-500">🏅 ${earnedCount}</span>
+                  ${S.is_vip ? '<span class="text-[9px] text-purple-400 font-bold tracking-wider">PREMIUM</span>' : '<span class="text-[9px] text-gray-500 font-bold uppercase tracking-widest">Free User</span>'}
+                  <span class="text-[9px] text-green-500 font-bold">R$ ${(S.user_profile?.real_balance || 0).toFixed(2)}</span>
                 </div>
               </div>
-              <span class="text-gray-600 text-xs shrink-0">›</span>
-            </button>`;
-            })() : ''}
+            </div>
 
             <div class="py-1">
               ${u ? `
@@ -1742,7 +1725,7 @@
             ${acRemaining()} sessão(ões) restante(s) hoje · 1h cada
             ${S.is_vip ? '<span class="text-purple-400 ml-1">👑 VIP (10x/dia · cooldown -50%)</span>' : '<span class="text-gray-600 ml-1">Free (3x/dia)</span>'}
           </p>
-          ${S.autoClicker ? `<p class="text-[10px] text-green-500 animate-pulse">⛏️ Ativo · encerra ${new Date(S.acSessionStart + 3600000).toLocaleTimeString('pt-BR', {hour:'2-digit',minute:'2-digit'})}</p>` : ''}
+          ${S.autoClicker ? `<p class="text-[10px] text-green-500 animate-pulse">⛏️ Ativo · encerra ${new Date(S.acSessionStart + 3600000).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>` : ''}
           <p class="text-[10px] text-yellow-700">⚠️ Mantenha a tela ligada e esta página aberta</p>
         </div>
       `}
@@ -1809,7 +1792,7 @@
       for (const g of grains) {
         if (g.owner === uid && g.rarity && counts[g.rarity] !== undefined) counts[g.rarity]++;
       }
-      const tot = Object.values(counts).reduce((a,b) => a+b, 0);
+      const tot = Object.values(counts).reduce((a, b) => a + b, 0);
       const badges = getBadges(counts, isVip);
       const earned = badges.filter(b => b.earned);
       const locked = badges.filter(b => !b.earned);
@@ -1833,14 +1816,15 @@
       </div>
     </div>
 
-    <div class="grid grid-cols-3 gap-2 mb-5">
-      ${['niobium','bismuth','opal','uranium','diamond','gold','silver','copper','brass'].filter(r => counts[r] > 0).slice(0,6).map(r =>
-        `<div class="bg-gray-900 rounded-xl p-3 text-center border border-gray-800">
-          <div class="text-xl">${RARITY[r].emoji}</div>
-          <div class="text-xs font-bold font-mono mt-1" style="color:${RARITY[r].color}">${counts[r]}</div>
-          <div class="text-[9px] text-gray-600">${RARITY[r].label}</div>
-        </div>`
-      ).join('') || '<div class="col-span-3 text-center text-gray-600 text-sm py-4">Nenhum grão ainda</div>'}
+    <div class="grid grid-cols-2 gap-3 mb-5">
+      <div class="bg-gray-900 rounded-xl p-4 text-center border border-gray-800">
+        <div class="text-2xl font-bold text-white">${tot.toLocaleString('pt-BR')}</div>
+        <div class="text-[10px] text-gray-500 mt-1">Grãos minerados</div>
+      </div>
+      <div class="bg-gray-900 rounded-xl p-4 text-center border border-gray-800">
+        <div class="text-2xl font-bold text-yellow-400">${earned.length}</div>
+        <div class="text-[10px] text-gray-500 mt-1">Conquistas</div>
+      </div>
     </div>
 
     <div class="bg-gray-900 rounded-2xl p-5 mb-5 border border-gray-800">
@@ -1863,10 +1847,10 @@
       <div class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">📋 Missões do dia</div>
       <div class="space-y-3">
         ${MISSIONS.map(m => {
-          const prog = Math.min(ms[m.key] || 0, m.goal);
-          const done = prog >= m.goal;
-          const pct = Math.round((prog / m.goal) * 100);
-          return `<div class="flex items-center gap-3">
+        const prog = Math.min(ms[m.key] || 0, m.goal);
+        const done = prog >= m.goal;
+        const pct = Math.round((prog / m.goal) * 100);
+        return `<div class="flex items-center gap-3">
             <span class="text-lg">${done ? '✅' : m.icon}</span>
             <div class="flex-1">
               <div class="flex justify-between text-xs mb-1">
@@ -1879,7 +1863,7 @@
               <div class="text-[9px] text-gray-600 mt-0.5">${m.desc}</div>
             </div>
           </div>`;
-        }).join('')}
+      }).join('')}
       </div>
     </div>` : ''}
   </div>`;
@@ -1917,15 +1901,15 @@
       <div class="text-[10px] text-green-400 font-bold uppercase tracking-wide mb-3">🌾 Top Lavoura #${S.lavoura?.number} — Contribuidores</div>
       <div class="space-y-1">
         ${lavTop.map((c, i) => {
-          const me = c.discord_id === S.user?.id;
-          return `<div class="flex items-center justify-between py-1.5 px-2 rounded ${me ? 'bg-green-900/20' : 'hover:bg-gray-800/40'} transition-colors">
+        const me = c.discord_id === S.user?.id;
+        return `<div class="flex items-center justify-between py-1.5 px-2 rounded ${me ? 'bg-green-900/20' : 'hover:bg-gray-800/40'} transition-colors">
             <div class="flex items-center gap-2">
               <span class="text-xs w-6 text-center">${medal(i)}</span>
               <span class="text-xs ${me ? 'text-green-400 font-bold' : 'text-gray-300'}">${c.discord_user}</span>
             </div>
             <span class="text-xs font-mono text-green-400">${Number(c.grains_count).toLocaleString('pt-BR')} grãos</span>
           </div>`;
-        }).join('')}
+      }).join('')}
       </div>
     </div>` : ''}
 
@@ -1941,11 +1925,11 @@
         </thead>
         <tbody>
           ${users.length === 0
-            ? `<tr><td colspan="${ORDER.length + 2}" class="text-center py-8 text-gray-600">Nenhum grão minerado ainda</td></tr>`
-            : users.slice(0, 10).map(([uid, d], i) => {
-                const tot = total(d);
-                const me = uid === S.user?.id;
-                return `<tr class="border-b border-gray-800/50 hover:bg-gray-800/40 transition-colors ${me ? 'bg-gray-800/30' : ''}">
+          ? `<tr><td colspan="${ORDER.length + 2}" class="text-center py-8 text-gray-600">Nenhum grão minerado ainda</td></tr>`
+          : users.slice(0, 10).map(([uid, d], i) => {
+            const tot = total(d);
+            const me = uid === S.user?.id;
+            return `<tr class="border-b border-gray-800/50 hover:bg-gray-800/40 transition-colors ${me ? 'bg-gray-800/30' : ''}">
                   <td class="px-4 py-2">
                     <div class="flex items-center gap-1">
                       <span class="mr-1 text-xs">${medal(i)}</span>
@@ -1961,7 +1945,7 @@
                     ${tot.toLocaleString('pt-BR')}
                   </td>
                 </tr>`;
-              }).join('')}
+          }).join('')}
         </tbody>
       </table>
     </div>
@@ -2187,7 +2171,7 @@
       const saldo = S.user_profile?.real_balance || 0;
       const amountInput = document.getElementById('withdraw-amount');
       const pixInput = document.getElementById('pix-key-input');
-      
+
       const amount = parseFloat(amountInput?.value || 0);
       const pixKey = pixInput?.value;
 
@@ -2301,7 +2285,7 @@
                 <div class="w-8 h-8 rounded-lg bg-gray-900 flex items-center justify-center text-sm">${RARITY[h.rarity]?.emoji || '🌾'}</div>
                 <div>
                   <div class="text-xs font-bold text-gray-200">${h.grain_id}</div>
-                  <div class="text-[9px] text-gray-500">${new Date(h.sold_at).toLocaleDateString('pt-BR')} ${new Date(h.sold_at).toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})}</div>
+                  <div class="text-[9px] text-gray-500">${new Date(h.sold_at).toLocaleDateString('pt-BR')} ${new Date(h.sold_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</div>
                 </div>
               </div>
               <div class="text-right">
@@ -2321,7 +2305,7 @@
             <div class="flex items-center justify-between p-3 bg-gray-950 rounded-xl border border-gray-800/50">
               <div>
                 <div class="text-xs font-bold text-gray-200">Saque Pix</div>
-                <div class="text-[9px] text-gray-500">Chave: ${String(w.pix_key || '').slice(0,15)}...</div>
+                <div class="text-[9px] text-gray-500">Chave: ${String(w.pix_key || '').slice(0, 15)}...</div>
               </div>
               <div class="text-right">
                 <div class="text-xs font-bold text-white">R$ ${Number(w.amount).toFixed(2)}</div>
@@ -3026,20 +3010,20 @@
     // BADGES & MISSÕES
     // ═══════════════════════════════════════════════════════
     const BADGES = [
-      { id: 'first_grain',   icon: '🌱', name: 'Primeira Semente',  desc: 'Mine seu primeiro grão',           check: (c,v) => Object.values(c).reduce((a,b)=>a+b,0) >= 1 },
-      { id: 'ten_grains',    icon: '⛏️',  name: 'Garimpeiro',        desc: '10 grãos minerados',               check: (c,v) => Object.values(c).reduce((a,b)=>a+b,0) >= 10 },
-      { id: 'fifty_grains',  icon: '💼',  name: 'Colecionador',      desc: '50 grãos minerados',               check: (c,v) => Object.values(c).reduce((a,b)=>a+b,0) >= 50 },
-      { id: 'hundred_grains',icon: '🏭',  name: 'Minerador',         desc: '100 grãos minerados',              check: (c,v) => Object.values(c).reduce((a,b)=>a+b,0) >= 100 },
-      { id: 'five_hundred',  icon: '🏆',  name: 'Veterano',          desc: '500 grãos minerados',              check: (c,v) => Object.values(c).reduce((a,b)=>a+b,0) >= 500 },
-      { id: 'first_copper',  icon: '🟤',  name: 'Toque de Cobre',    desc: 'Mine seu primeiro Cobre',          check: (c,v) => (c.copper||0) >= 1 },
-      { id: 'first_silver',  icon: '🪙',  name: 'Toque de Prata',    desc: 'Mine seu primeiro Prata',          check: (c,v) => (c.silver||0) >= 1 },
-      { id: 'first_gold',    icon: '🥇',  name: 'Toque de Ouro',     desc: 'Mine seu primeiro Ouro',           check: (c,v) => (c.gold||0) >= 1 },
-      { id: 'first_diamond', icon: '💎',  name: 'Diamantado',        desc: 'Mine seu primeiro Diamante',       check: (c,v) => (c.diamond||0) >= 1 },
-      { id: 'first_uranium', icon: '☢️',  name: 'Radioativo',        desc: 'Mine seu primeiro Urânio',         check: (c,v) => (c.uranium||0) >= 1 },
-      { id: 'first_opal',    icon: '🔮',  name: 'Iridescente',       desc: 'Mine sua primeira Opala',          check: (c,v) => (c.opal||0) >= 1 },
-      { id: 'first_bismuth', icon: '🌈',  name: 'Espectral',         desc: 'Mine seu primeiro Bismuto',        check: (c,v) => (c.bismuth||0) >= 1 },
-      { id: 'first_niobium', icon: '⚡',  name: 'Lendário',          desc: 'Mine seu primeiro Nióbio',         check: (c,v) => (c.niobium||0) >= 1 },
-      { id: 'vip',           icon: '👑',  name: 'VIP',               desc: 'Assinou o plano VIP',              check: (c,v) => v },
+      { id: 'first_grain', icon: '🌱', name: 'Primeira Semente', desc: 'Mine seu primeiro grão', check: (c, v) => Object.values(c).reduce((a, b) => a + b, 0) >= 1 },
+      { id: 'ten_grains', icon: '⛏️', name: 'Garimpeiro', desc: '10 grãos minerados', check: (c, v) => Object.values(c).reduce((a, b) => a + b, 0) >= 10 },
+      { id: 'fifty_grains', icon: '💼', name: 'Colecionador', desc: '50 grãos minerados', check: (c, v) => Object.values(c).reduce((a, b) => a + b, 0) >= 50 },
+      { id: 'hundred_grains', icon: '🏭', name: 'Minerador', desc: '100 grãos minerados', check: (c, v) => Object.values(c).reduce((a, b) => a + b, 0) >= 100 },
+      { id: 'five_hundred', icon: '🏆', name: 'Veterano', desc: '500 grãos minerados', check: (c, v) => Object.values(c).reduce((a, b) => a + b, 0) >= 500 },
+      { id: 'first_copper', icon: '🟤', name: 'Toque de Cobre', desc: 'Mine seu primeiro Cobre', check: (c, v) => (c.copper || 0) >= 1 },
+      { id: 'first_silver', icon: '🪙', name: 'Toque de Prata', desc: 'Mine seu primeiro Prata', check: (c, v) => (c.silver || 0) >= 1 },
+      { id: 'first_gold', icon: '🥇', name: 'Toque de Ouro', desc: 'Mine seu primeiro Ouro', check: (c, v) => (c.gold || 0) >= 1 },
+      { id: 'first_diamond', icon: '💎', name: 'Diamantado', desc: 'Mine seu primeiro Diamante', check: (c, v) => (c.diamond || 0) >= 1 },
+      { id: 'first_uranium', icon: '☢️', name: 'Radioativo', desc: 'Mine seu primeiro Urânio', check: (c, v) => (c.uranium || 0) >= 1 },
+      { id: 'first_opal', icon: '🔮', name: 'Iridescente', desc: 'Mine sua primeira Opala', check: (c, v) => (c.opal || 0) >= 1 },
+      { id: 'first_bismuth', icon: '🌈', name: 'Espectral', desc: 'Mine seu primeiro Bismuto', check: (c, v) => (c.bismuth || 0) >= 1 },
+      { id: 'first_niobium', icon: '⚡', name: 'Lendário', desc: 'Mine seu primeiro Nióbio', check: (c, v) => (c.niobium || 0) >= 1 },
+      { id: 'vip', icon: '👑', name: 'VIP', desc: 'Assinou o plano VIP', check: (c, v) => v },
     ];
 
     function getBadges(counts, isVip) {
@@ -3047,22 +3031,22 @@
     }
 
     const MISSIONS = [
-      { id: 'login',     icon: '📲', name: 'Check-in diário',     desc: 'Entrar no GrãoNet hoje',          goal: 1,  key: 'mLogin' },
-      { id: 'mine3',     icon: '⛏️',  name: 'Garimpeiro do dia',   desc: 'Mine 3 grãos hoje',               goal: 3,  key: 'mMine' },
-      { id: 'mine10',    icon: '🏭',  name: 'Turno completo',      desc: 'Mine 10 grãos hoje',              goal: 10, key: 'mMine' },
-      { id: 'lavoura5',  icon: '🌾',  name: 'Ajuda na lavoura',    desc: 'Contribua 5 grãos à lavoura',     goal: 5,  key: 'mLav' },
+      { id: 'login', icon: '📲', name: 'Check-in diário', desc: 'Entrar no GrãoNet hoje', goal: 1, key: 'mLogin' },
+      { id: 'mine3', icon: '⛏️', name: 'Garimpeiro do dia', desc: 'Mine 3 grãos hoje', goal: 3, key: 'mMine' },
+      { id: 'mine10', icon: '🏭', name: 'Turno completo', desc: 'Mine 10 grãos hoje', goal: 10, key: 'mMine' },
+      { id: 'lavoura5', icon: '🌾', name: 'Ajuda na lavoura', desc: 'Contribua 5 grãos à lavoura', goal: 5, key: 'mLav' },
     ];
 
     async function loadMissions() {
       const today = todayStr();
-      const keys = ['mDate','mLogin','mMine','mLav'];
+      const keys = ['mDate', 'mLogin', 'mMine', 'mLav'];
       const vals = await Promise.all(keys.map(k => db.settings.get(k)));
       const [mDate, mLogin, mMine, mLav] = vals.map(v => v?.value);
       if (mDate !== today) {
         S.missions = { date: today, mLogin: 0, mMine: 0, mLav: 0 };
         await db.settings.bulkPut([
           { key: 'mDate', value: today }, { key: 'mLogin', value: 0 },
-          { key: 'mMine', value: 0 },    { key: 'mLav', value: 0 },
+          { key: 'mMine', value: 0 }, { key: 'mLav', value: 0 },
         ]);
       } else {
         S.missions = { date: today, mLogin: mLogin || 0, mMine: mMine || 0, mLav: mLav || 0 };
@@ -3194,7 +3178,7 @@
             }
             await go(S.page, {}, true);
           }
-        } catch(e) { /* silencioso */ }
+        } catch (e) { /* silencioso */ }
       }, 5000);
     }
 
@@ -3337,11 +3321,10 @@
 
         await loadLavoura();
         await loadAcState();
-        await loadMissions();
         await updateOnlineCount();
         await go(S.page || 'inventory', {}, true);
         setupBackButton();
-        
+
         if (S.user) {
           initPeer();
           startPresence();
