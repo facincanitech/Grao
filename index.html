@@ -947,6 +947,7 @@
       spawnParticles(rarity);
       broadcastGrain(grain);
       sendDiscordWebhook(grain);
+      trackMission('mMine');
       toast(`🎉 ${id} ${getLabel('mining').toLowerCase()}! (${RARITY[rarity].label})`, 'success', 5000);
 
       render();
@@ -1200,6 +1201,7 @@
         if (data && !data.error) {
           S.lavoura.grains_count = data.count;
           S.myContrib = (S.myContrib || 0) + 1;
+          trackMission('mLav');
           if (data.full) await handleHarvest();
         }
       } catch (e) { }
