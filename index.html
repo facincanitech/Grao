@@ -1428,6 +1428,7 @@
             S.data.ranking = { grains: gData, users: uData };
             S.data.rankingSource = 'global';
           }
+          await loadLavoura();
           if (S.lavoura?.id) {
             const { data: lavTop } = await sb.from('lavoura_contributions')
               .select('discord_id,discord_user,grains_count')
@@ -2375,8 +2376,15 @@
           <div class="flex gap-3">
             <div class="w-8 h-8 bg-purple-500/10 rounded flex items-center justify-center text-lg">🤖</div>
             <div>
-              <div class="text-sm font-bold text-gray-200">Auto-Clicker 24h</div>
-              <div class="text-[10px] text-gray-500">Mineração automática mesmo com a aba em segundo plano.</div>
+              <div class="text-sm font-bold text-gray-200">Auto-Clicker 10x por dia</div>
+              <div class="text-[10px] text-gray-500">10 sessões de 1h/dia · Free tem apenas 3x.</div>
+            </div>
+          </div>
+          <div class="flex gap-3">
+            <div class="w-8 h-8 bg-purple-500/10 rounded flex items-center justify-center text-lg">⚡</div>
+            <div>
+              <div class="text-sm font-bold text-gray-200">Cooldown reduzido em 50%</div>
+              <div class="text-[10px] text-gray-500">Mine o dobro de grãos por dia que um usuário free.</div>
             </div>
           </div>
           <div class="flex gap-3">
@@ -2384,13 +2392,6 @@
             <div>
               <div class="text-sm font-bold text-gray-200">Estética Premium</div>
               <div class="text-[10px] text-gray-500">Coroa 👑, Nome Dourado e Brilho Neon no Ranking.</div>
-            </div>
-          </div>
-          <div class="flex gap-3">
-            <div class="w-8 h-8 bg-purple-500/10 rounded flex items-center justify-center text-lg">💰</div>
-            <div>
-              <div class="text-sm font-bold text-gray-200">Vendas Pix (P2P)</div>
-              <div class="text-[10px] text-gray-500">Venda seus grãos por dinheiro real no Marketplace.</div>
             </div>
           </div>
         </div>
@@ -2415,20 +2416,19 @@
             <div class="space-y-3">
               <div class="flex justify-between items-center">
                 <span class="text-xs">🤖 Auto-Clicker</span>
-                <button onclick="S.autoClicker = !S.autoClicker; render()" class="px-4 py-1.5 rounded-lg text-[10px] font-bold transition-all ${S.autoClicker ? 'bg-green-600 text-white' : 'bg-gray-800 text-gray-400'}">${S.autoClicker ? 'LIGADO' : 'DESLIGADO'}</button>
+                <button onclick="toggleAutoClicker()" class="px-4 py-1.5 rounded-lg text-[10px] font-bold transition-all ${S.autoClicker ? 'bg-green-600 text-white' : 'bg-gray-800 text-gray-400'}">${S.autoClicker ? 'LIGADO' : 'DESLIGADO'}</button>
+              </div>
+              <div class="flex justify-between items-center text-[10px] text-gray-500">
+                <span>Sessões hoje</span>
+                <span>${acRemaining()} restantes de ${acMaxSessions()}</span>
               </div>
               <div class="flex justify-between items-center">
-                <span class="text-xs">🎨 Skin Premium</span>
-                <button onclick="S.theme = S.theme === 'cannabis' ? 'default' : 'cannabis'; sbUpsertUser(S.user); render()" class="bg-gray-800 hover:bg-gray-700 px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all">${S.theme === 'cannabis' ? 'ErvaNet (Ativa)' : 'Ativar ErvaNet'}</button>
+                <span class="text-xs">🎨 Skin ErvaNet</span>
+                <button onclick="S.theme = S.theme === 'cannabis' ? 'default' : 'cannabis'; sbUpsertUser(S.user); render()" class="bg-gray-800 hover:bg-gray-700 px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all">${S.theme === 'cannabis' ? 'Ativa ✓' : 'Ativar'}</button>
               </div>
             </div>
           </div>
-        ` : `
-          <div class="text-center p-4 bg-gray-950 rounded-xl border border-gray-800 border-dashed mb-3">
-            <div class="text-xs text-gray-500">O sistema de assinaturas está sendo finalizado.</div>
-          </div>
-          ${!S.is_trial ? `<button onclick="ativarTrial()" class="w-full mt-1 text-[10px] text-gray-500 hover:text-white transition-colors underline">Quero testar o Auto-Clicker por 1 hora</button>` : ''}
-        `}
+        ` : ''}
       </div>
 
       <!-- SKINS SECTION -->
