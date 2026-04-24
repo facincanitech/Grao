@@ -57,7 +57,7 @@ serve(async (req: Request) => {
     if (!mpData.id) throw new Error('MP Error: ' + JSON.stringify(mpData))
 
     const txid = String(mpData.id)
-    const qrCode = mpData.point_of_interaction?.transaction_data?.qr_code_base64
+    const qrCode = 'data:image/png;base64,' + (mpData.point_of_interaction?.transaction_data?.qr_code_base64 || '')
     const copiaCola = mpData.point_of_interaction?.transaction_data?.qr_code
 
     await supabase.from('market_listings_brl').update({
