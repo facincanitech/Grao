@@ -1508,8 +1508,8 @@
         }
       } else if (page === 'ranking') {
         try {
-          const { data: gData } = await sb.from('grains').select('id,rarity,owner,discord_user,discord_id').limit(50000);
-          const { data: uData } = await sb.from('users').select('discord_id,username,is_vip,theme').limit(5000);
+          const { data: gData } = await sb.from('grains').select('id,rarity,owner,discord_user,discord_id').limit(999999999);
+          const { data: uData } = await sb.from('users').select('discord_id,username,is_vip,theme').limit(999999999);
           if (gData && uData) {
             S.data.ranking = { grains: gData, users: uData };
             S.data.rankingSource = 'global';
@@ -1999,6 +1999,12 @@
   </div>`;
     }
 
+    function fmtK(n) {
+      if (n >= 1000000) return (n / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+      if (n >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
+      return n.toString();
+    }
+
     function pageRankingSync() {
       if (!S.user) return pageLogin();
       const { grains, users: sbUsers } = S.data.ranking || { grains: [], users: [] };
@@ -2051,10 +2057,10 @@
                     </div>
                   </td>
                   ${ORDER.map(r => `<td class="text-center py-2 px-1 font-mono text-xs" style="color:${RARITY[r].color}">
-                    ${d.counts[r] ? d.counts[r] : '<span class="text-gray-700">–</span>'}
+                    ${d.counts[r] ? fmtK(d.counts[r]) : '<span class="text-gray-700">–</span>'}
                   </td>`).join('')}
                   <td class="text-right px-4 py-2 font-bold text-white">
-                    ${tot.toLocaleString('pt-BR')}
+                    ${fmtK(tot)}
                   </td>
                 </tr>`;
           }).join('')}
@@ -2071,7 +2077,7 @@
           <span class="text-xs text-gray-400">Sua posição:</span>
           <span class="text-sm font-bold text-cyan-400">#${myIdx + 1}</span>
         </div>
-        <span class="text-xs text-gray-500">${myTot.toLocaleString('pt-BR')} grãos</span>
+        <span class="text-xs text-gray-500">${fmtK(myTot)} grãos</span>
       </div>`;
     })()}
   </div>`;
