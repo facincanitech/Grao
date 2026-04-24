@@ -1507,7 +1507,7 @@
         <svg class="w-4 h-4 text-indigo-500 transition-all" viewBox="0 0 71 55" fill="currentColor"><path d="M60.1 4.9A58.5 58.5 0 0 0 45.6.6a.2.2 0 0 0-.2.1 40.8 40.8 0 0 0-1.8 3.7 54 54 0 0 0-16.2 0A37.2 37.2 0 0 0 25.6.7a.2.2 0 0 0-.2-.1A58.4 58.4 0 0 0 10.9 4.9a.2.2 0 0 0-.1.1C1.6 18.7-.9 32.2.3 45.4a.2.2 0 0 0 .1.2 58.8 58.8 0 0 0 17.7 8.9.2.2 0 0 0 .2-.1 42 42 0 0 0 3.6-5.9.2.2 0 0 0-.1-.3 38.7 38.7 0 0 1-5.5-2.6.2.2 0 0 1 0-.4l1.1-.8a.2.2 0 0 1 .2 0c11.5 5.3 24 5.3 35.4 0a.2.2 0 0 1 .2 0l1.1.8a.2.2 0 0 1 0 .4 36.1 36.1 0 0 1-5.5 2.6.2.2 0 0 0-.1.3 47.1 47.1 0 0 0 3.6 5.9.2.2 0 0 0 .2.1 58.7 58.7 0 0 0 17.7-8.9.2.2 0 0 0 .1-.2c1.5-15.3-2.5-28.6-10.6-40.4a.2.2 0 0 0-.1-.1ZM23.7 37.3c-3.5 0-6.4-3.2-6.4-7.1s2.8-7.1 6.4-7.1c3.6 0 6.4 3.2 6.4 7.1 0 3.9-2.9 7.1-6.4 7.1Zm23.6 0c-3.5 0-6.4-3.2-6.4-7.1s2.8-7.1 6.4-7.1c3.6 0 6.5 3.2 6.5 7.1 0 3.9-2.9 7.1-6.5 7.1Z"/></svg>
       </button>
       ${u ? `<nav class="hidden sm:flex gap-1">
-        ${nb('inventory', '📦 Inventário')}${nb('mine', '⛏️ Minerar')}${nb('bank', '🏦 Banco')}${nb('market', '🛒 Vender')}${nb('ranking', '🏆 Ranking')}${nb('event', '🎲 Evento')}
+        ${nb('inventory', '📦 Inventário')}${nb('mine', '⛏️ Minerar')}${nb('market', '🛒 Vender')}${nb('ranking', '🏆 Ranking')}${nb('event', '🎲 Evento')}${nb('bank', '🏦 Banco')}
         <button onclick="go('store')" class="px-3 py-1 rounded text-sm transition-colors ${S.page === 'store' ? 'bg-purple-900/50 text-purple-300 border border-purple-700/50' : 'text-purple-400 font-bold hover:text-purple-300'}">⭐ Loja</button>
       </nav>`: ''}
     </div>
@@ -1564,7 +1564,7 @@
     </div>
   </header>
   ${u ? `<nav class="sm:hidden flex gap-1 px-4 py-2 bg-gray-950 border-b border-gray-900 overflow-x-auto scrollbar-thin">
-    ${nb('inventory', '📦')}${nb('mine', '⛏️')}${nb('bank', '🏦')}${nb('market', '🛒')}${nb('ranking', '🏆')}${nb('event', '🎲')}${nb('store', '⭐')}
+    ${nb('inventory', '📦')}${nb('mine', '⛏️')}${nb('market', '🛒')}${nb('ranking', '🏆')}${nb('event', '🎲')}${nb('bank', '🏦')}${nb('store', '⭐')}
   </nav>`: ''}`;
     }
 
@@ -2439,8 +2439,8 @@
       <!-- BENEFICIOS VIP -->
       <div class="bg-gray-900 border border-purple-900/30 rounded-2xl p-6 relative overflow-hidden">
         <div class="absolute -right-10 -top-10 text-9xl opacity-5">👑</div>
-        <h3 class="text-lg font-bold text-purple-400 mb-2">Planos VIP</h3>
-        <p class="text-[10px] text-gray-500 mb-6">Assine para liberar ferramentas de automação e estética exclusiva.</p>
+        <h3 class="text-lg font-bold text-purple-400 mb-1">VIP — R$ 10,00 <span class="text-[10px] text-gray-500 font-normal">/ 30 dias</span></h3>
+        <p class="text-[10px] text-gray-500 mb-6">Assine com saldo da conta e libere automação e estética exclusiva.</p>
 
         <div class="space-y-4 mb-8">
           <div class="flex gap-3">
@@ -2465,20 +2465,18 @@
             </div>
           </div>
         </div>
-        
-        <div class="space-y-3 mb-8">
-          ${Object.entries(PLANS).map(([key, p]) => `
-            <div class="bg-gray-950 border border-gray-800 p-3 rounded-xl flex justify-between items-center group hover:border-purple-500/30 transition-all">
-              <div>
-                <div class="text-sm font-bold text-gray-200">${p.label}</div>
-                <div class="text-[10px] text-gray-500">${p.desc}</div>
-              </div>
-              <button onclick="abrirLojaVIP('${p.id}')" class="bg-purple-900/30 hover:bg-purple-600 text-purple-300 hover:text-white px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all">
-                R$ ${p.price.toFixed(2)}
-              </button>
-            </div>
-          `).join('')}
+
+        ${!S.is_vip ? `
+        <div class="bg-gray-950 border border-purple-900/30 rounded-xl p-4 mb-4 flex justify-between items-center">
+          <div>
+            <div class="text-sm font-bold text-gray-200">VIP — 30 dias</div>
+            <div class="text-[10px] text-gray-500">Saldo disponível: <span class="text-green-400 font-bold">R$ ${(S.user_profile?.real_balance || 0).toFixed(2)}</span></div>
+          </div>
+          <button onclick="comprarVipComSaldo()" class="bg-purple-600 hover:bg-purple-500 text-white px-4 py-2 rounded-lg text-sm font-bold transition-all">
+            Comprar R$ 10,00
+          </button>
         </div>
+        ` : ''}
 
         ${S.is_vip ? `
           <div class="bg-gray-950 rounded-xl p-4 border border-gray-800">
@@ -3101,6 +3099,27 @@
         setTimeout(tick, 1000);
       };
       tick();
+    }
+
+    async function comprarVipComSaldo() {
+      if (!S.user) return loginWithDiscord();
+      const saldo = S.user_profile?.real_balance || 0;
+      if (saldo < 10) {
+        toast(`Saldo insuficiente. Você tem R$ ${saldo.toFixed(2)} — precisa de R$ 10,00.`, 'error', 5000);
+        return;
+      }
+      if (!confirm('Confirmar compra de VIP por 30 dias por R$ 10,00?')) return;
+      try {
+        const { data, error } = await sb.rpc('purchase_vip_with_balance', { target_user_id: S.user.id });
+        if (error) throw error;
+        if (!data?.success) throw new Error(data?.error || 'Erro ao processar');
+        S.is_vip = true;
+        toast('👑 VIP ativado por 30 dias!', 'success', 6000);
+        spawnParticles('niobium');
+        await go('store', {}, true);
+      } catch (e) {
+        toast('Erro: ' + e.message, 'error');
+      }
     }
 
     async function abrirLojaVIP(planoId = 'mensal_10') {
