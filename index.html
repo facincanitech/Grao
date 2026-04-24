@@ -371,6 +371,21 @@
           niobium: { label: 'Nióbio', emoji: '⚡' },
         }
       },
+      cyberpunk: {
+        id: 'cyberpunk', name: 'CyberNet ☠️', price: 15,
+        desc: 'Tema cyberpunk — hackeia a rede, coleta dados e domina o Grid.',
+        rarities: {
+          brass: { label: 'Bit', emoji: '💾' },
+          copper: { label: 'Chip', emoji: '⚡' },
+          silver: { label: 'Circuito', emoji: '🔌' },
+          gold: { label: 'Disco', emoji: '💿' },
+          diamond: { label: 'Core', emoji: '🖥️' },
+          uranium: { label: 'Célula', emoji: '🔋' },
+          opal: { label: 'Cristal', emoji: '💠' },
+          bismuth: { label: 'Nano', emoji: '🧬' },
+          niobium: { label: 'Glitch', emoji: '☠️' },
+        }
+      },
       cannabis: {
         id: 'cannabis', name: 'ErvaNet 🌿', price: 10,
         desc: 'Muda o visual completo para tema cannabis — raridades, ícones e textos.',
@@ -672,6 +687,19 @@
           casino_title: '🎰 Cassino', casino_desc: 'Aposte 5 minérios específicos. Recompensas de 1 a 5 níveis acima (0.05% jackpot).',
           casino_cost: 'Custo: 5x', casino_btn: '🎰 Puxar Alavanca',
         },
+        cyberpunk: {
+          grain: 'Dado', grains: 'Dados', mine: 'Hackear', mining: 'Hack',
+          nav_inv: '💾 Arquivos', nav_mine: '☠️ Hackear', nav_market: '🕶️ Mercado Negro',
+          nav_rank: '🏆 Top Hackers', nav_event: '⚡ Grid', nav_bank: '💳 Banco',
+          app_icon: '☠️', mine_icon: '☠️', mine_btn: 'Iniciar Hack',
+          event_title: 'O Grid', event_tab: 'Forja & Jogo', event_missions_tab: 'Contratos',
+          event_desc: 'Processe seus dados no Grid para extrair arquivos mais raros ou aposte tudo no Jogo da Rede.',
+          event_warn: 'Dados processados são destruídos permanentemente. Glitch não pode ser forjado.',
+          forge_title: '⚡ O Processador', forge_desc: 'Selecione e queime 10 dados iguais. 50% de chance de extrair 1 do nível superior.',
+          forge_cost: 'Custo: 10x', forge_btn: '⚡ Processar (50%)',
+          casino_title: '🎮 Jogo da Rede', casino_desc: 'Aposte 5 dados específicos. Recompensas de 1 a 5 níveis acima (0.05% jackpot).',
+          casino_cost: 'Custo: 5x', casino_btn: '🎮 Entrar no Jogo',
+        },
         cannabis: {
           grain: 'canabis', grains: 'canabiss', mine: 'Cultivar', mining: 'Cultivo',
           nav_inv: '🌿 canabiss', nav_mine: '🌱 Cultivar', nav_market: '🏪 Dispensário',
@@ -695,7 +723,7 @@
     }
 
     async function applyTheme(name) {
-      if (!['default', 'mining', 'cannabis'].includes(name)) name = 'default';
+      if (!['default', 'mining', 'cyberpunk', 'cannabis'].includes(name)) name = 'default';
       if (name !== 'default' && !S.purchased_skins.includes(name)) {
         toast('Skin não adquirida! Compre na Loja.', 'warning'); return;
       }
