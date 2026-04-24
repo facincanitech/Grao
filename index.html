@@ -1506,6 +1506,10 @@
             if (gData && uData) { S.data.ranking = { grains: gData, users: uData }; S.data.rankingSource = 'global'; }
           } catch(e) {}
         }
+        if (S.user) {
+          const { data: profile } = await sb.from('users').select('real_balance, total_withdrawn, pix_key, pix_key_type').eq('discord_id', S.user.id).single();
+          S.user_profile = profile;
+        }
         await loadMissions();
       } else if (page === 'store' || page === 'bank') {
         if (S.user) {
@@ -1883,6 +1887,12 @@
           ${isMe ? '<span class="text-[10px] px-2 py-0.5 bg-cyan-900/50 text-cyan-300 border border-cyan-700 rounded-full">Você</span>' : ''}
         </div>
         <div class="text-gray-400 text-sm mt-1">${tot.toLocaleString('pt-BR')} grão${tot !== 1 ? 's' : ''} minerado${tot !== 1 ? 's' : ''}</div>
+        ${isMe ? `<div class="mt-2 flex items-center gap-2 flex-wrap">
+          ${S.user_profile?.pix_key
+            ? `<span class="text-[10px] text-green-400 bg-green-900/20 border border-green-900/40 rounded-full px-2 py-0.5">💳 ${S.user_profile.pix_key_type?.toUpperCase() || 'PIX'}: ${S.user_profile.pix_key}</span>`
+            : `<span class="text-[10px] text-gray-500 italic">Sem chave PIX cadastrada</span>`}
+          <button onclick="go('bank')" class="text-[10px] text-cyan-500 hover:underline">editar →</button>
+        </div>` : ''}
       </div>
     </div>
 
