@@ -546,9 +546,10 @@
           }
         })
         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'users', filter: `discord_id=eq.${S.user.id}` }, (payload) => {
+          const changed = payload.new.is_vip !== S.is_vip || payload.new.theme !== S.theme;
           S.is_vip = payload.new.is_vip;
           S.theme = payload.new.theme;
-          go(S.page, {}, true); // Silent refresh
+          if (changed) go(S.page, {}, true);
         })
         .on('postgres_changes', { event: '*', schema: 'public', table: 'market_listings_brl' }, () => {
           if (S.page === 'market') go('market', {}, true);
@@ -1439,6 +1440,15 @@
       } else if (page === 'mine') {
         if (S.user) S.data.inventory = await db.grains.where('owner').equals(S.user.id).toArray();
         await loadLavoura();
+      } else if (page === 'profile') {
+        if (!S.data.ranking?.grains?.length) {
+          try {
+            const { data: gData } = await sb.from('grains').select('id,rarity,owner,discord_user');
+            const { data: uData } = await sb.from('users').select('discord_id,username,is_vip,theme');
+            if (gData && uData) { S.data.ranking = { grains: gData, users: uData }; S.data.rankingSource = 'global'; }
+          } catch(e) {}
+        }
+        await loadMissions();
       } else if (page === 'store' || page === 'bank') {
         if (S.user) {
           const { data: profile } = await sb.from('users').select('real_balance, total_withdrawn').eq('discord_id', S.user.id).single();
@@ -1485,7 +1495,7 @@
     // ═══════════════════════════════════════════════════════
     function renderHeader() {
       const u = S.user;
-      const av = u?.avatar ? `https://cdn.discordapp.com/avatars/${u.id}/${u.avatar}.png?size=64` : null;
+      const av = u?.avatar_url || null;
       const nm = u ? (u.global_name || u.username || 'Usuário') : null;
       const nb = (id, lbl) => `<button onclick="go('${id}')" class="px-3 py-1 rounded text-sm transition-colors ${S.page === id ? 'bg-gray-800 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-900'}">${lbl}</button>`;
       return `
@@ -1516,15 +1526,16 @@
         ${S.showMenu ? `
           <div class="absolute right-0 mt-2 w-56 bg-gray-900 border border-gray-800 rounded-xl shadow-2xl z-50 overflow-hidden fade-in">
             <!-- PERFIL NO MENU -->
-            <div class="p-4 bg-gray-950 border-b border-gray-800 flex items-center gap-3">
+            <div onclick="go('profile',{uid:S.user?.id}); S.showMenu=false;" class="p-4 bg-gray-950 border-b border-gray-800 flex items-center gap-3 cursor-pointer hover:bg-gray-900 transition-colors">
               ${av ? `<img src="${av}" class="w-10 h-10 rounded-full border border-gray-700">` : '<div class="w-10 h-10 rounded-full bg-gray-800 flex items-center justify-center">👤</div>'}
-              <div class="flex flex-col min-w-0">
+              <div class="flex flex-col min-w-0 flex-1">
                 <span class="text-sm font-bold truncate ${S.is_vip ? 'glow-gold glow-purple' : 'text-gray-200'}">${S.is_vip ? '👑 ' : ''}${nm}</span>
                 <div class="flex items-center gap-2 mt-0.5">
                   ${S.is_vip ? '<span class="text-[9px] text-purple-400 font-bold tracking-wider">PREMIUM</span>' : '<span class="text-[9px] text-gray-500 font-bold uppercase tracking-widest">Free User</span>'}
                   <span class="text-[9px] text-green-500 font-bold">R$ ${(S.user_profile?.real_balance || 0).toFixed(2)}</span>
                 </div>
               </div>
+              <span class="text-[10px] text-gray-600">→</span>
             </div>
 
             <div class="py-1">
@@ -1787,8 +1798,8 @@
     <button onclick="go('ranking')" class="text-gray-500 hover:text-white text-sm mb-5 flex items-center gap-1 transition-colors">← Ranking</button>
 
     <div class="bg-gray-900 rounded-2xl p-6 mb-5 border border-gray-800 flex items-center gap-4">
-      <div class="w-14 h-14 rounded-full bg-gray-800 flex items-center justify-center text-2xl font-bold text-gray-400 shrink-0">
-        ${name.charAt(0).toUpperCase()}
+      <div class="w-14 h-14 rounded-full bg-gray-800 shrink-0 overflow-hidden flex items-center justify-center">
+        ${isMe && S.user?.avatar_url ? `<img src="${S.user.avatar_url}" class="w-full h-full object-cover">` : `<span class="text-2xl font-bold text-gray-400">${name.charAt(0).toUpperCase()}</span>`}
       </div>
       <div class="flex-1 min-w-0">
         <div class="flex items-center gap-2 flex-wrap">
