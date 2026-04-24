@@ -336,15 +336,15 @@
     };
 
     const RARITY = {
-      brass: { key: 'brass', label: 'Latão', emoji: '🔶', color: '#CD7F32', zeros: 1, prefix: 'L' },
-      copper: { key: 'copper', label: 'Cobre', emoji: '🟤', color: '#B87333', zeros: 2, prefix: 'C' },
-      silver: { key: 'silver', label: 'Prata', emoji: '⚪', color: '#C0C0C0', zeros: 3, prefix: 'S' },
-      gold: { key: 'gold', label: 'Ouro', emoji: '🟡', color: '#FFD700', zeros: 4, prefix: 'G' },
-      diamond: { key: 'diamond', label: 'Diamante', emoji: '💎', color: '#00FFFF', zeros: 5, prefix: 'D' },
-      uranium: { key: 'uranium', label: 'Urânio', emoji: '☢️', color: '#39FF14', zeros: 6, prefix: 'U' },
-      opal: { key: 'opal', label: 'Opala', emoji: '🔮', color: '#FF69B4', zeros: 7, prefix: 'O' },
-      bismuth: { key: 'bismuth', label: 'Bismuto', emoji: '🌈', color: '#E8B4F8', zeros: 8, prefix: 'B' },
-      niobium: { key: 'niobium', label: 'Nióbio', emoji: '⚡', color: '#C084FC', zeros: 9, prefix: 'N' }
+      brass: { key: 'brass', label: 'Palha', emoji: '🌾', color: '#CD7F32', zeros: 1, prefix: 'L' },
+      copper: { key: 'copper', label: 'Cevada', emoji: '🟤', color: '#B87333', zeros: 2, prefix: 'C' },
+      silver: { key: 'silver', label: 'Trigo', emoji: '🌿', color: '#C0C0C0', zeros: 3, prefix: 'S' },
+      gold: { key: 'gold', label: 'Milho', emoji: '🌽', color: '#FFD700', zeros: 4, prefix: 'G' },
+      diamond: { key: 'diamond', label: 'Arroz', emoji: '💎', color: '#00FFFF', zeros: 5, prefix: 'D' },
+      uranium: { key: 'uranium', label: 'Centeio', emoji: '🟢', color: '#39FF14', zeros: 6, prefix: 'U' },
+      opal: { key: 'opal', label: 'Quinoa', emoji: '🔮', color: '#FF69B4', zeros: 7, prefix: 'O' },
+      bismuth: { key: 'bismuth', label: 'Espelta', emoji: '🌈', color: '#E8B4F8', zeros: 8, prefix: 'B' },
+      niobium: { key: 'niobium', label: 'Açafrão', emoji: '⭐', color: '#C084FC', zeros: 9, prefix: 'N' }
     };
     const ORDER = ['niobium', 'bismuth', 'opal', 'uranium', 'diamond', 'gold', 'silver', 'copper', 'brass'];
     const SCORES = { niobium: 100000, bismuth: 10000, opal: 1000, uranium: 500, diamond: 100, gold: 20, silver: 5, copper: 2, brass: 1 };
@@ -353,7 +353,24 @@
     const _RARITY_DEFAULTS = {};
     for (const r in RARITY) _RARITY_DEFAULTS[r] = { label: RARITY[r].label, emoji: RARITY[r].emoji };
 
+    const ADMIN_ID = '170887646363648000';
+
     const SKINS = {
+      mining: {
+        id: 'mining', name: 'MineNet ⛏️', price: 5,
+        desc: 'Tema de mineração — transforma colheita em mineração e grãos em minérios.',
+        rarities: {
+          brass: { label: 'Latão', emoji: '🔶' },
+          copper: { label: 'Cobre', emoji: '🪙' },
+          silver: { label: 'Prata', emoji: '⚪' },
+          gold: { label: 'Ouro', emoji: '🟡' },
+          diamond: { label: 'Diamante', emoji: '💎' },
+          uranium: { label: 'Urânio', emoji: '☢️' },
+          opal: { label: 'Opala', emoji: '🔮' },
+          bismuth: { label: 'Bismuto', emoji: '🌈' },
+          niobium: { label: 'Nióbio', emoji: '⚡' },
+        }
+      },
       cannabis: {
         id: 'cannabis', name: 'ErvaNet 🌿', price: 10,
         desc: 'Muda o visual completo para tema cannabis — raridades, ícones e textos.',
@@ -408,6 +425,10 @@
         } else if (type === 'ready') {
           o.type = 'triangle'; o.frequency.setValueAtTime(523.25, now); o.frequency.setValueAtTime(659.25, now + 0.1); o.frequency.setValueAtTime(783.99, now + 0.2);
           g.gain.setValueAtTime(0.05, now); g.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+          o.start(); o.stop(now + 0.5);
+        } else if (type === 'notification') {
+          o.type = 'sine'; o.frequency.setValueAtTime(880, now); o.frequency.setValueAtTime(1100, now + 0.12); o.frequency.setValueAtTime(880, now + 0.24);
+          g.gain.setValueAtTime(0.15, now); g.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
           o.start(); o.stop(now + 0.5);
         }
       }
@@ -554,6 +575,13 @@
         .on('postgres_changes', { event: '*', schema: 'public', table: 'market_listings_brl' }, () => {
           if (S.page === 'market') go('market', {}, true);
         })
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'withdrawal_requests', filter: `user_id=eq.${S.user.id}` }, (payload) => {
+          if (payload.new.status === 'completed') {
+            AudioEngine.play('notification');
+            toast('💸 Seu saque foi processado! O PIX foi enviado para sua chave.', 'success', 8000);
+            if (S.page === 'bank') go('bank', {}, true);
+          }
+        })
         .subscribe((status) => {
           if (status === 'SUBSCRIBED') S.realtimeSubscribed = true;
         });
@@ -619,16 +647,29 @@
     function getLabel(key) {
       const themes = {
         default: {
-          grain: 'Grão', grains: 'Grãos', mine: 'Minerar', mining: 'Mineração',
+          grain: 'Grão', grains: 'Grãos', mine: 'Colher', mining: 'Colheita',
+          nav_inv: '📦 Inventário', nav_mine: '🌾 Colher', nav_market: '🛒 Vender',
+          nav_rank: '🏆 Ranking', nav_event: '🎲 Evento', nav_bank: '🏦 Banco',
+          app_icon: '🌾', mine_icon: '🌾', mine_btn: 'Começar Colheita',
+          event_title: 'Evento Oficial', event_tab: 'Debulha & Cassino', event_missions_tab: 'Missões Diárias',
+          event_desc: 'Queime seus grãos na debulhadora para colher raridades superiores ou tente a sorte no Cassino.',
+          event_warn: 'Grãos gastos são destruídos permanentemente. Açafrão não pode ser debulhado.',
+          forge_title: '🌾 A Debulhadora', forge_desc: 'Selecione e queime 10 grãos iguais. 50% de chance de colher 1 da raridade superior.',
+          forge_cost: 'Custo: 10x', forge_btn: '🌾 Debulhar (50%)',
+          casino_title: '🎰 Cassino', casino_desc: 'Aposte 5 grãos específicos. Recompensas de 1 a 5 níveis acima (0.05% jackpot).',
+          casino_cost: 'Custo: 5x', casino_btn: '🎰 Puxar Alavanca',
+        },
+        mining: {
+          grain: 'Minério', grains: 'Minérios', mine: 'Minerar', mining: 'Mineração',
           nav_inv: '📦 Inventário', nav_mine: '⛏️ Minerar', nav_market: '🛒 Vender',
           nav_rank: '🏆 Ranking', nav_event: '🎲 Evento', nav_bank: '🏦 Banco',
-          app_icon: '🌾', mine_icon: '⛏️', mine_btn: 'Começar Mineração',
+          app_icon: '⛏️', mine_icon: '⛏️', mine_btn: 'Começar Mineração',
           event_title: 'Evento Oficial', event_tab: 'Forja & Cassino', event_missions_tab: 'Missões Diárias',
-          event_desc: 'Queime seus grãos para forjar minérios mais raros ou tentar a sorte grande no Cassino.',
-          event_warn: 'Grãos gastos são destruídos permanentemente. A raridade Nióbio não pode ser forjada.',
-          forge_title: '🔥 A Forja', forge_desc: 'Selecione e queime 10 grãos iguais. 50% de chance de forjar 1 da raridade superior.',
+          event_desc: 'Queime seus minérios para forjar raridades superiores ou tente a sorte no Cassino.',
+          event_warn: 'Minérios gastos são destruídos permanentemente. Nióbio não pode ser forjado.',
+          forge_title: '🔥 A Forja', forge_desc: 'Selecione e queime 10 minérios iguais. 50% de chance de forjar 1 da raridade superior.',
           forge_cost: 'Custo: 10x', forge_btn: '🔨 Bater o Martelo (50%)',
-          casino_title: '🎰 Cassino', casino_desc: 'Aposte 5 grãos específicos. Recompensas de 1 a 5 níveis acima (0.05% jackpot).',
+          casino_title: '🎰 Cassino', casino_desc: 'Aposte 5 minérios específicos. Recompensas de 1 a 5 níveis acima (0.05% jackpot).',
           casino_cost: 'Custo: 5x', casino_btn: '🎰 Puxar Alavanca',
         },
         cannabis: {
@@ -649,13 +690,13 @@
     }
 
     function _applyRaritySkin(themeName) {
-      const overrides = themeName === 'cannabis' ? SKINS.cannabis.rarities : _RARITY_DEFAULTS;
+      const overrides = SKINS[themeName]?.rarities || _RARITY_DEFAULTS;
       for (const r in overrides) { RARITY[r].label = overrides[r].label; RARITY[r].emoji = overrides[r].emoji; }
     }
 
     async function applyTheme(name) {
-      if (!['default', 'cannabis'].includes(name)) name = 'default';
-      if (name === 'cannabis' && !S.purchased_skins.includes('cannabis')) {
+      if (!['default', 'mining', 'cannabis'].includes(name)) name = 'default';
+      if (name !== 'default' && !S.purchased_skins.includes(name)) {
         toast('Skin não adquirida! Compre na Loja.', 'warning'); return;
       }
       S.theme = name;
@@ -1487,6 +1528,12 @@
             S.data.withdrawalHistory = withdrawals || [];
           }
         }
+      } else if (page === 'admin') {
+        if (S.user?.id !== ADMIN_ID) { S.page = 'inventory'; render(); return; }
+        const { data: saques } = await sb.from('withdrawal_requests')
+          .select('*').eq('status', 'pending').order('created_at', { ascending: true });
+        S.data.adminSaques = saques || [];
+        S.data.adminUser = null;
       }
 
       render();
@@ -1526,6 +1573,7 @@
       ${u ? `<nav class="hidden sm:flex gap-1">
         ${nb('inventory', getLabel('nav_inv'))}${nb('mine', getLabel('nav_mine'))}${nb('market', '🛒 Vender')}${nb('ranking', '🏆 Ranking')}${nb('event', '🎲 Evento')}${nb('bank', '🏦 Banco')}
         <button onclick="go('store')" class="px-3 py-1 rounded text-sm transition-colors ${S.page === 'store' ? 'bg-purple-900/50 text-purple-300 border border-purple-700/50' : 'text-purple-400 font-bold hover:text-purple-300'}">⭐ Loja</button>
+        ${S.user?.id === ADMIN_ID ? `<button onclick="go('admin')" class="px-3 py-1 rounded text-sm transition-colors ${S.page === 'admin' ? 'bg-red-900/50 text-red-300 border border-red-700/50' : 'text-red-400 font-bold hover:text-red-300'}">🔧 Admin</button>` : ''}
       </nav>`: ''}
     </div>
     <div class="flex items-center gap-2 text-sm shrink-0">
@@ -2235,6 +2283,90 @@
         toast('Saque solicitado! Processamos em até 24h.', 'success', 5000);
         await go('bank', {}, true);
       }
+    }
+
+    async function marcarSaquePago(id) {
+      if (!confirm('Confirmar pagamento deste saque?')) return;
+      const { error } = await sb.from('withdrawal_requests')
+        .update({ status: 'completed', processed_at: new Date().toISOString() })
+        .eq('id', id);
+      if (error) { toast('Erro: ' + error.message, 'error'); return; }
+      AudioEngine.play('success');
+      toast('Saque marcado como pago!', 'success');
+      await go('admin', {}, true);
+    }
+
+    async function buscarUsuarioAdmin() {
+      const q = document.getElementById('admin-user-search')?.value?.trim();
+      if (!q) return;
+      const { data } = await sb.from('users')
+        .select('discord_id, username, real_balance, total_withdrawn, pix_key, pix_key_type, is_vip')
+        .or(`discord_id.eq.${q},username.ilike.%${q}%`)
+        .limit(5);
+      S.data.adminUser = data || [];
+      render();
+    }
+
+    function pageAdminSync() {
+      if (!S.user || S.user.id !== ADMIN_ID) return '<div class="p-6 text-red-400">Acesso negado.</div>';
+      const saques = S.data.adminSaques || [];
+      const users = S.data.adminUser || [];
+
+      return `<div class="p-4 sm:p-6 max-w-4xl mx-auto">
+    <h2 class="text-2xl font-bold mb-6">🔧 Painel Admin</h2>
+
+    <!-- BUSCA DE USUÁRIO -->
+    <div class="bg-gray-900 border border-gray-800 rounded-2xl p-5 mb-6">
+      <h3 class="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3">Buscar Usuário</h3>
+      <div class="flex gap-2">
+        <input id="admin-user-search" type="text" placeholder="Discord ID ou username..." class="flex-1 bg-gray-950 border border-gray-800 rounded-xl px-4 py-2 text-sm focus:border-cyan-500 outline-none">
+        <button onclick="buscarUsuarioAdmin()" class="bg-cyan-700 hover:bg-cyan-600 text-white font-bold px-4 py-2 rounded-xl text-sm transition-all">Buscar</button>
+      </div>
+      ${users.length > 0 ? `<div class="mt-3 space-y-2">
+        ${users.map(u => `
+          <div class="bg-gray-950 rounded-xl p-3 border border-gray-800 flex flex-wrap gap-4 items-center justify-between">
+            <div>
+              <div class="text-sm font-bold text-white">${u.username} ${u.is_vip ? '👑' : ''}</div>
+              <div class="text-[10px] text-gray-500 font-mono">${u.discord_id}</div>
+              ${u.pix_key ? `<div class="text-[10px] text-cyan-400 mt-1">${u.pix_key_type?.toUpperCase()}: ${u.pix_key}</div>` : '<div class="text-[10px] text-gray-600 mt-1">Sem chave PIX</div>'}
+            </div>
+            <div class="text-right">
+              <div class="text-lg font-black text-green-400">R$ ${Number(u.real_balance || 0).toFixed(2)}</div>
+              <div class="text-[10px] text-gray-500">Sacado: R$ ${Number(u.total_withdrawn || 0).toFixed(2)}</div>
+            </div>
+          </div>`).join('')}
+      </div>` : ''}
+    </div>
+
+    <!-- SAQUES PENDENTES -->
+    <div class="bg-gray-900 border border-yellow-900/30 rounded-2xl p-5">
+      <h3 class="text-sm font-bold text-yellow-400 uppercase tracking-wider mb-3">Saques Pendentes (${saques.length})</h3>
+      ${saques.length === 0 ? '<div class="text-center py-8 text-gray-600 text-xs italic">Nenhum saque pendente.</div>' : `
+      <div class="space-y-3">
+        ${saques.map(s => `
+          <div class="bg-gray-950 rounded-xl p-4 border border-gray-800">
+            <div class="flex flex-wrap gap-3 items-start justify-between mb-2">
+              <div>
+                <div class="text-xs text-gray-500 font-mono">${s.user_id}</div>
+                <div class="text-[10px] text-gray-600">${new Date(s.created_at).toLocaleString('pt-BR')}</div>
+              </div>
+              <div class="text-right">
+                <div class="text-lg font-black text-green-400">R$ ${Number(s.amount).toFixed(2)}</div>
+              </div>
+            </div>
+            <div class="flex items-center justify-between">
+              <div>
+                <span class="text-[10px] text-gray-500 uppercase">${s.pix_key_type || 'manual'}: </span>
+                <span class="text-xs text-cyan-300 font-mono">${s.pix_key}</span>
+              </div>
+              <button onclick="marcarSaquePago('${s.id}')" class="bg-green-700 hover:bg-green-600 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition-all">
+                ✓ Marcar como Pago
+              </button>
+            </div>
+          </div>`).join('')}
+      </div>`}
+    </div>
+  </div>`;
     }
 
     function pageBankSync() {
@@ -3326,6 +3458,7 @@
           case 'grain': body = S.params?.id ? pageGrainSync(S.params.id) : pageInventorySync(); break;
           case 'store': body = pageStoreSync(); break;
           case 'profile': body = pageProfileSync(S.params?.uid || S.user?.id); break;
+          case 'admin': body = S.user?.id === ADMIN_ID ? pageAdminSync() : pageInventorySync(); break;
           default: body = pageInventorySync();
         }
       } catch (e) { body = `<div class="p-6 text-red-400">Erro: ${e.message}</div>` }
