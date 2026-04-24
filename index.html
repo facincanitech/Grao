@@ -357,7 +357,7 @@
 
     const SKINS = {
       mining: {
-        id: 'mining', name: 'MineNet ⛏️', price: 5,
+        id: 'mining', name: 'MineNet ⛏️', price: 5, icon: '⛏️',
         desc: 'Tema de mineração — transforma colheita em mineração e grãos em minérios.',
         rarities: {
           brass: { label: 'Latão', emoji: '🔶' },
@@ -372,7 +372,7 @@
         }
       },
       cyberpunk: {
-        id: 'cyberpunk', name: 'CyberNet ☠️', price: 15,
+        id: 'cyberpunk', name: 'CyberNet ☠️', price: 15, icon: '☠️',
         desc: 'Tema cyberpunk — hackeia a rede, coleta dados e domina o Grid.',
         rarities: {
           brass: { label: 'Bit', emoji: '💾' },
@@ -387,7 +387,7 @@
         }
       },
       cannabis: {
-        id: 'cannabis', name: 'ErvaNet 🌿', price: 10,
+        id: 'cannabis', name: 'ErvaNet 🌿', price: 10, icon: '🌿',
         desc: 'Muda o visual completo para tema cannabis — raridades, ícones e textos.',
         rarities: {
           brass: { label: 'Prensado', emoji: '🧱' },
@@ -2767,7 +2767,7 @@
             const active = S.theme === sk.id;
             return `<div class="bg-gray-950 border ${owned ? 'border-green-900/40' : 'border-gray-800'} p-4 rounded-xl flex items-center justify-between group hover:border-green-900/50 transition-all">
               <div class="flex items-center gap-4">
-                <div class="w-12 h-12 bg-green-950/30 rounded-lg flex items-center justify-center text-2xl group-hover:scale-110 transition-transform">🌿</div>
+                <div class="w-12 h-12 bg-gray-800/50 rounded-lg flex items-center justify-center text-2xl group-hover:scale-110 transition-transform">${sk.icon || '🎨'}</div>
                 <div>
                   <div class="text-sm font-bold text-gray-300">${sk.name}</div>
                   <div class="text-[10px] text-gray-500">${sk.desc}</div>
@@ -2784,27 +2784,6 @@
             </div>`;
           }).join('')}
 
-          <div class="bg-gray-950 border border-gray-800 p-4 rounded-xl flex items-center justify-between opacity-40">
-            <div class="flex items-center gap-4">
-              <div class="w-12 h-12 bg-cyan-950/30 rounded-lg flex items-center justify-center text-2xl">🌌</div>
-              <div>
-                <div class="text-sm font-bold text-gray-300">CyberNet</div>
-                <div class="text-[10px] text-gray-600">Interface holográfica e neon tecnológico.</div>
-              </div>
-            </div>
-            <div class="text-[10px] font-bold text-gray-500 bg-gray-900 px-2 py-1 rounded">Em Breve</div>
-          </div>
-
-          <div class="bg-gray-950 border border-gray-800 p-4 rounded-xl flex items-center justify-between opacity-40">
-            <div class="flex items-center gap-4">
-              <div class="w-12 h-12 bg-blue-950/30 rounded-lg flex items-center justify-center text-2xl">❄️</div>
-              <div>
-                <div class="text-sm font-bold text-gray-300">Inverno</div>
-                <div class="text-[10px] text-gray-600">Tema frio com efeitos de neve.</div>
-              </div>
-            </div>
-            <div class="text-[10px] font-bold text-gray-500 bg-gray-900 px-2 py-1 rounded">Em Breve</div>
-          </div>
         </div>
 
         <div class="text-center text-[10px] text-gray-600 border-t border-gray-800 pt-4">Skins alteram nomes e ícones do sistema exclusivamente para você.</div>
