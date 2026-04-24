@@ -1444,6 +1444,15 @@
           S.data.ranking = { grains: localGrains, users: [] };
           S.data.rankingSource = 'local';
         }
+      } else if (page === 'profile') {
+        if (S.user) S.data.inventory = await db.grains.where('owner').equals(S.user.id).toArray();
+        if (!S.data.ranking?.grains?.length) {
+          try {
+            const { data: gData } = await sb.from('grains').select('id,rarity,owner,discord_user,discord_id');
+            const { data: uData } = await sb.from('users').select('discord_id,username,is_vip,theme');
+            if (gData && uData) { S.data.ranking = { grains: gData, users: uData }; S.data.rankingSource = 'global'; }
+          } catch(e) {}
+        }
       } else if (page === 'mine') {
         if (S.user) S.data.inventory = await db.grains.where('owner').equals(S.user.id).toArray();
         await loadLavoura();
@@ -1524,16 +1533,26 @@
         ${S.showMenu ? `
           <div class="absolute right-0 mt-2 w-56 bg-gray-900 border border-gray-800 rounded-xl shadow-2xl z-50 overflow-hidden fade-in">
             <!-- PERFIL NO MENU -->
-            <div class="p-4 bg-gray-950 border-b border-gray-800 flex items-center gap-3">
-              ${av ? `<img src="${av}" class="w-10 h-10 rounded-full border border-gray-700">` : '<div class="w-10 h-10 rounded-full bg-gray-800 flex items-center justify-center">👤</div>'}
-              <div class="flex flex-col min-w-0">
-                <span class="text-sm font-bold truncate ${S.is_vip ? 'glow-gold glow-purple' : 'text-gray-200'}">${S.is_vip ? '👑 ' : ''}${nm}</span>
+            ${u ? (() => {
+              const invCounts = Object.fromEntries(ORDER.map(r => [r, 0]));
+              for (const g of (S.data.inventory || [])) if (g.rarity && invCounts[g.rarity] !== undefined) invCounts[g.rarity]++;
+              const earnedCount = getBadges(invCounts, S.is_vip).filter(b => b.earned).length;
+              const tot = Object.values(invCounts).reduce((a,b) => a+b, 0);
+              return `<button onclick="S.showMenu=false; go('profile',{uid:'${u.id}'})" class="w-full p-4 bg-gray-950 border-b border-gray-800 flex items-center gap-3 hover:bg-gray-900 transition-colors text-left">
+              ${av ? `<img src="${av}" class="w-10 h-10 rounded-full border border-gray-700 shrink-0">` : `<div class="w-10 h-10 rounded-full bg-gray-800 flex items-center justify-center shrink-0 text-lg font-bold text-gray-400">${(nm||'?').charAt(0).toUpperCase()}</div>`}
+              <div class="flex flex-col min-w-0 flex-1">
+                <span class="text-sm font-bold truncate ${S.is_vip ? 'glow-gold' : 'text-gray-200'}">${S.is_vip ? '👑 ' : ''}${nm}</span>
                 <div class="flex items-center gap-2 mt-0.5">
-                  ${S.is_vip ? '<span class="text-[9px] text-purple-400 font-bold tracking-wider">PREMIUM</span>' : '<span class="text-[9px] text-gray-500 font-bold uppercase tracking-widest">Free User</span>'}
-                  <span class="text-[9px] text-green-500 font-bold">R$ ${(S.user_profile?.real_balance || 0).toFixed(2)}</span>
+                  ${S.is_vip ? '<span class="text-[9px] text-purple-400 font-bold">PREMIUM</span>' : '<span class="text-[9px] text-gray-500 font-bold uppercase">Free</span>'}
+                  <span class="text-[9px] text-gray-600">·</span>
+                  <span class="text-[9px] text-gray-400">${tot} grãos</span>
+                  <span class="text-[9px] text-gray-600">·</span>
+                  <span class="text-[9px] text-yellow-500">🏅 ${earnedCount}</span>
                 </div>
               </div>
-            </div>
+              <span class="text-gray-600 text-xs shrink-0">›</span>
+            </button>`;
+            })() : ''}
 
             <div class="py-1">
               ${u ? `
