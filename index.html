@@ -1508,8 +1508,8 @@
         }
       } else if (page === 'ranking') {
         try {
-          const { data: gData } = await sb.from('grains').select('id,rarity,owner,discord_user,discord_id');
-          const { data: uData } = await sb.from('users').select('discord_id,username,is_vip,theme');
+          const { data: gData } = await sb.from('grains').select('id,rarity,owner,discord_user,discord_id').limit(50000);
+          const { data: uData } = await sb.from('users').select('discord_id,username,is_vip,theme').limit(5000);
           if (gData && uData) {
             S.data.ranking = { grains: gData, users: uData };
             S.data.rankingSource = 'global';
