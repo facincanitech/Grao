@@ -1431,14 +1431,6 @@
             S.data.rankingSource = 'global';
           }
           await loadLavoura();
-          if (S.lavoura?.id) {
-            const { data: lavTop } = await sb.from('lavoura_contributions')
-              .select('discord_id,discord_user,grains_count')
-              .eq('lavoura_id', S.lavoura.id)
-              .order('grains_count', { ascending: false })
-              .limit(10);
-            S.data.lavTop = lavTop || [];
-          }
         } catch (e) {
           const localGrains = await db.grains.toArray();
           S.data.ranking = { grains: localGrains, users: [] };
@@ -1866,8 +1858,6 @@
       if (!S.user) return pageLogin();
       const { grains, users: sbUsers } = S.data.ranking || { grains: [], users: [] };
       const source = S.data.rankingSource;
-      const lavTop = S.data.lavTop || [];
-
       const map = {};
       const emptyC = () => Object.fromEntries(ORDER.map(r => [r, 0]));
 
@@ -1889,22 +1879,6 @@
       return `<div class="p-4 sm:p-6 max-w-5xl mx-auto">
     <h2 class="text-2xl font-bold mb-1">🏆 Ranking</h2>
     <p class="text-gray-400 text-sm mb-4">Top holders de toda a rede GrãoNet.</p>
-
-    ${lavTop.length > 0 ? `<div class="bg-gray-900 rounded-lg p-4 mb-6 border border-green-900/40">
-      <div class="text-[10px] text-green-400 font-bold uppercase tracking-wide mb-3">🌾 Top Lavoura #${S.lavoura?.number} — Contribuidores</div>
-      <div class="space-y-1">
-        ${lavTop.map((c, i) => {
-        const me = c.discord_id === S.user?.id;
-        return `<div class="flex items-center justify-between py-1.5 px-2 rounded ${me ? 'bg-green-900/20' : 'hover:bg-gray-800/40'} transition-colors">
-            <div class="flex items-center gap-2">
-              <span class="text-xs w-6 text-center">${medal(i)}</span>
-              <span class="text-xs ${me ? 'text-green-400 font-bold' : 'text-gray-300'}">${c.discord_user}</span>
-            </div>
-            <span class="text-xs font-mono text-green-400">${Number(c.grains_count).toLocaleString('pt-BR')} grãos</span>
-          </div>`;
-      }).join('')}
-      </div>
-    </div>` : ''}
 
     <div class="text-[10px] text-gray-600 mb-3">${source === 'global' ? `✅ Dados globais · ${grains.length} grão(s) · ${users.length} jogador(es)` : '⚠️ Dados locais (offline)'}</div>
     <div class="bg-gray-900 rounded-lg overflow-x-auto scrollbar-thin">
