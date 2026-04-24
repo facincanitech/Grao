@@ -1617,13 +1617,14 @@
       const counts = {};
       for (const r of ORDER) counts[r] = all.filter(g => g.rarity === r).length;
 
-      const sorted = filtered.sort((a, b) => {
-        const d = ORDER.indexOf(a.rarity) - ORDER.indexOf(b.rarity);
-        return d || a.generated_at - b.generated_at;
+      const sort = S.inventorySort || 'rarity_desc';
+      const sorted = [...filtered].sort((a, b) => {
+        if (sort === 'rarity_asc') return ORDER.indexOf(b.rarity) - ORDER.indexOf(a.rarity) || a.generated_at - b.generated_at;
+        return ORDER.indexOf(a.rarity) - ORDER.indexOf(b.rarity) || a.generated_at - b.generated_at;
       });
 
       return `<div class="p-4 sm:p-6">
-    <div class="flex flex-wrap gap-2 mb-5">
+    <div class="flex flex-wrap gap-2 mb-3">
       <button onclick="setFilter('all')" class="px-3 py-1 rounded text-xs font-medium transition-colors border ${S.filter === 'all' ? 'bg-gray-700 border-gray-500 text-white' : 'bg-gray-900 border-gray-800 text-gray-400 hover:bg-gray-800'}">
         Todos (${all.length})
       </button>
@@ -1632,6 +1633,14 @@
         style="color:${RARITY[r].color};border-color:${S.filter === r ? RARITY[r].color : RARITY[r].color + '30'};background:${S.filter === r ? RARITY[r].color + '25' : 'transparent'}">
         ${RARITY[r].emoji} ${RARITY[r].label} (${counts[r]})
       </button>`).join('')}
+    </div>
+    <div class="flex gap-2 mb-5">
+      <button onclick="setInventorySort('rarity_desc')" class="px-3 py-1 rounded text-xs font-medium transition-colors border ${sort === 'rarity_desc' ? 'bg-gray-700 border-gray-500 text-white' : 'bg-gray-900 border-gray-800 text-gray-400 hover:bg-gray-800'}">
+        ↓ Raro → Comum
+      </button>
+      <button onclick="setInventorySort('rarity_asc')" class="px-3 py-1 rounded text-xs font-medium transition-colors border ${sort === 'rarity_asc' ? 'bg-gray-700 border-gray-500 text-white' : 'bg-gray-900 border-gray-800 text-gray-400 hover:bg-gray-800'}">
+        ↑ Comum → Raro
+      </button>
     </div>
     ${sorted.length === 0 ? `<div class="text-center py-20 text-gray-600">
       <div class="text-6xl mb-4">🌾</div>
@@ -3006,6 +3015,7 @@
     // HANDLERS DOM
     // ═══════════════════════════════════════════════════════
     function setFilter(r) { S.filter = r; render() }
+    function setInventorySort(s) { S.inventorySort = s; render() }
 
     async function doGenerateTransfer() {
       let target = document.getElementById('tr-target')?.value?.trim();
