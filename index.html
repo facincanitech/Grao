@@ -1422,6 +1422,14 @@
             S.data.ranking = { grains: gData, users: uData };
             S.data.rankingSource = 'global';
           }
+          if (S.lavoura?.id) {
+            const { data: lavTop } = await sb.from('lavoura_contributions')
+              .select('discord_id,discord_user,grains_count')
+              .eq('lavoura_id', S.lavoura.id)
+              .order('grains_count', { ascending: false })
+              .limit(10);
+            S.data.lavTop = lavTop || [];
+          }
         } catch (e) {
           const localGrains = await db.grains.toArray();
           S.data.ranking = { grains: localGrains, users: [] };
@@ -1763,14 +1771,14 @@
       if (!S.user) return pageLogin();
       const { grains, users: sbUsers } = S.data.ranking || { grains: [], users: [] };
       const source = S.data.rankingSource;
+      const lavTop = S.data.lavTop || [];
 
       const map = {};
       const emptyC = () => Object.fromEntries(ORDER.map(r => [r, 0]));
 
       for (const u of sbUsers) {
-        map[u.discord_id] = { name: u.username, counts: emptyC(), is_vip: u.is_vip, theme: u.theme || 'default' };
+        map[u.discord_id] = { name: u.username, counts: emptyC(), is_vip: u.is_vip };
       }
-
       for (const g of grains) {
         const uid = g.owner;
         if (!uid || uid.startsWith('__')) continue;
@@ -1778,53 +1786,66 @@
         if (g.rarity && map[uid].counts[g.rarity] !== undefined) map[uid].counts[g.rarity]++;
       }
 
-      const score = u => ORDER.reduce((s, r) => s + (u.counts[r] || 0) * SCORES[r], 0);
-      const users = Object.entries(map).sort((a, b) => score(b[1]) - score(a[1]));
+      const total = u => ORDER.reduce((s, r) => s + (u.counts[r] || 0), 0);
+      const users = Object.entries(map).sort((a, b) => total(b[1]) - total(a[1]));
+
+      const medal = i => i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i + 1}`;
 
       return `<div class="p-4 sm:p-6 max-w-5xl mx-auto">
     <h2 class="text-2xl font-bold mb-1">🏆 Ranking</h2>
-    <p class="text-gray-400 text-sm mb-2">Top holders de toda a rede GrãoNet.</p>
-    <div class="text-[10px] text-gray-600 mb-4">${source === 'global' ? `✅ Dados globais · ${grains.length} grão(s) · ${users.length} jogador(es)` : '⚠️ Dados locais (offline)'}</div>
+    <p class="text-gray-400 text-sm mb-4">Top holders de toda a rede GrãoNet.</p>
+
+    ${lavTop.length > 0 ? `<div class="bg-gray-900 rounded-lg p-4 mb-6 border border-green-900/40">
+      <div class="text-[10px] text-green-400 font-bold uppercase tracking-wide mb-3">🌾 Top Lavoura #${S.lavoura?.number} — Contribuidores</div>
+      <div class="space-y-1">
+        ${lavTop.map((c, i) => {
+          const me = c.discord_id === S.user?.id;
+          return `<div class="flex items-center justify-between py-1.5 px-2 rounded ${me ? 'bg-green-900/20' : 'hover:bg-gray-800/40'} transition-colors">
+            <div class="flex items-center gap-2">
+              <span class="text-xs w-6 text-center">${medal(i)}</span>
+              <span class="text-xs ${me ? 'text-green-400 font-bold' : 'text-gray-300'}">${c.discord_user}</span>
+            </div>
+            <span class="text-xs font-mono text-green-400">${Number(c.grains_count).toLocaleString('pt-BR')} grãos</span>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>` : ''}
+
+    <div class="text-[10px] text-gray-600 mb-3">${source === 'global' ? `✅ Dados globais · ${grains.length} grão(s) · ${users.length} jogador(es)` : '⚠️ Dados locais (offline)'}</div>
     <div class="bg-gray-900 rounded-lg overflow-x-auto scrollbar-thin">
       <table class="w-full text-xs min-w-[700px]">
         <thead>
           <tr class="border-b border-gray-800 text-[10px] text-gray-500">
             <th class="text-left px-4 py-2 w-40">Usuário</th>
             ${ORDER.map(r => `<th class="text-center py-2 px-1" style="color:${RARITY[r].color}">${RARITY[r].emoji}<br><span class="text-[9px]">${RARITY[r].label}</span></th>`).join('')}
-            <th class="text-right px-4 py-2">Pts</th>
+            <th class="text-right px-4 py-2">Total</th>
           </tr>
         </thead>
         <tbody>
-          ${users.length === 0 ? `<tr><td colspan="${ORDER.length + 2}" class="text-center py-8 text-gray-600">Nenhum grão minerado ainda</td></tr>`
-          : users.slice(0, 20).map(([uid, d], i) => {
-            const sc = score(d);
-            const me = uid === S.user?.id;
-            const med = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i + 1}`;
-            return `<tr class="border-b border-gray-800/50 hover:bg-gray-800/40 transition-colors ${me ? 'bg-gray-800/30' : ''}">
-                <td class="px-4 py-2">
-                  <div class="flex items-center gap-1">
-                    <span class="mr-1">${med}</span>
-                    ${d.is_vip ? '<span class="text-xs">👑</span>' : ''}
-                    <span class="${d.is_vip ? 'glow-gold glow-purple font-bold' : (me ? 'text-cyan-400 font-bold' : 'text-gray-300')}">${d.name}</span>
-                    ${d.is_vip ? '<span class="ml-1 text-[8px] px-1 bg-purple-900/50 text-purple-300 border border-purple-700 rounded font-bold">VIP</span>' : ''}
-                  </div>
-                </td>
-                ${ORDER.map(r => `<td class="text-center py-2 px-1 font-mono" style="color:${RARITY[r].color}">
-                  ${d.counts[r] ? d.counts[r] : '<span class="text-gray-700">–</span>'}
-                </td>`).join('')}
-                <td class="text-right px-4 py-2 text-yellow-400 font-bold">
-                  <div class="flex flex-col items-end">
-                    <span>${sc.toLocaleString()}</span>
-                    <span class="text-[8px] text-gray-500 font-normal uppercase">${getLabel('grains')}</span>
-                  </div>
-                </td>
-              </tr>`;
-          }).join('')}
+          ${users.length === 0
+            ? `<tr><td colspan="${ORDER.length + 2}" class="text-center py-8 text-gray-600">Nenhum grão minerado ainda</td></tr>`
+            : users.slice(0, 10).map(([uid, d], i) => {
+                const tot = total(d);
+                const me = uid === S.user?.id;
+                return `<tr class="border-b border-gray-800/50 hover:bg-gray-800/40 transition-colors ${me ? 'bg-gray-800/30' : ''}">
+                  <td class="px-4 py-2">
+                    <div class="flex items-center gap-1">
+                      <span class="mr-1 text-xs">${medal(i)}</span>
+                      ${d.is_vip ? '<span class="text-xs">👑</span>' : ''}
+                      <span class="text-xs ${d.is_vip ? 'glow-gold font-bold' : (me ? 'text-cyan-400 font-bold' : 'text-gray-300')}">${d.name}</span>
+                      ${d.is_vip ? '<span class="ml-1 text-[8px] px-1 bg-purple-900/50 text-purple-300 border border-purple-700 rounded font-bold">VIP</span>' : ''}
+                    </div>
+                  </td>
+                  ${ORDER.map(r => `<td class="text-center py-2 px-1 font-mono text-xs" style="color:${RARITY[r].color}">
+                    ${d.counts[r] ? d.counts[r] : '<span class="text-gray-700">–</span>'}
+                  </td>`).join('')}
+                  <td class="text-right px-4 py-2 font-bold text-white">
+                    ${tot.toLocaleString('pt-BR')}
+                  </td>
+                </tr>`;
+              }).join('')}
         </tbody>
       </table>
-    </div>
-    <div class="mt-3 text-[10px] text-gray-600 text-center flex flex-wrap justify-center gap-2">
-      ${ORDER.map(r => `<span style="color:${RARITY[r].color}">${RARITY[r].emoji}×${SCORES[r].toLocaleString()}</span>`).join('<span class="text-gray-700">+</span>')}
     </div>
   </div>`;
     }
@@ -1836,15 +1857,15 @@
       const myListings = listings.filter(l => l.seller_id === S.user.id);
       const allListings = listings.filter(l => l.seller_id !== S.user.id);
 
+      const mktTab = S.marketTab === 'transfer' ? 'transfer' : 'brl';
       return `<div class="p-4 sm:p-6 max-w-4xl mx-auto">
     <h2 class="text-2xl font-bold mb-1">🛒 Mercado</h2>
     <div class="flex gap-4 mb-5 border-b border-gray-800">
-      <button onclick="S.marketTab = 'swap'; go('market')" class="pb-2 text-sm font-bold transition-all ${S.marketTab === 'swap' || !S.marketTab ? 'text-cyan-400 border-b-2 border-cyan-400' : 'text-gray-500 hover:text-gray-300'}">Trocas</button>
-      <button onclick="S.marketTab = 'brl'; go('market')" class="pb-2 text-sm font-bold transition-all ${S.marketTab === 'brl' ? 'text-green-400 border-b-2 border-green-400' : 'text-gray-500 hover:text-gray-300'}">Vendas (R$)</button>
-      <button onclick="S.marketTab = 'transfer'; go('market')" class="pb-2 text-sm font-bold transition-all ${S.marketTab === 'transfer' ? 'text-cyan-400 border-b-2 border-cyan-400' : 'text-gray-500 hover:text-gray-300'}">Resgatar</button>
+      <button onclick="S.marketTab = 'brl'; go('market')" class="pb-2 text-sm font-bold transition-all ${mktTab === 'brl' ? 'text-green-400 border-b-2 border-green-400' : 'text-gray-500 hover:text-gray-300'}">💰 Vendas (R$)</button>
+      <button onclick="S.marketTab = 'transfer'; go('market')" class="pb-2 text-sm font-bold transition-all ${mktTab === 'transfer' ? 'text-cyan-400 border-b-2 border-cyan-400' : 'text-gray-500 hover:text-gray-300'}">📤 Resgatar Grão</button>
     </div>
 
-    ${S.marketTab === 'brl' ? renderMarketBRLSync() : S.marketTab === 'transfer' ? pageTransferSync() : renderMarketSwap(listings, myGrains)}
+    ${mktTab === 'transfer' ? pageTransferSync() : renderMarketBRLSync()}
   </div>`;
     }
 
