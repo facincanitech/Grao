@@ -1873,7 +1873,10 @@
             <div class="flex-1">
               <div class="flex justify-between text-xs mb-1">
                 <span class="${done ? 'text-green-400 line-through' : 'text-gray-300'}">${m.name}</span>
-                <span class="text-gray-500">${prog}/${m.goal}</span>
+                <div class="flex items-center gap-2">
+                  <span class="text-[9px] font-bold ${done ? 'text-green-400' : 'text-yellow-600'}">${m.prize}</span>
+                  <span class="text-gray-500">${prog}/${m.goal}</span>
+                </div>
               </div>
               <div class="bg-gray-800 rounded-full h-1.5 overflow-hidden">
                 <div class="h-full rounded-full transition-all ${done ? 'bg-green-500' : 'bg-cyan-600'}" style="width:${pct}%"></div>
@@ -1949,6 +1952,19 @@
         </tbody>
       </table>
     </div>
+
+    ${(() => {
+      const myIdx = users.findIndex(([uid]) => uid === S.user?.id);
+      if (myIdx === -1 || myIdx < 10) return '';
+      const myTot = total(users[myIdx][1]);
+      return `<div class="mt-3 bg-gray-900 border border-cyan-900/30 rounded-lg px-4 py-3 flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <span class="text-xs text-gray-400">Sua posição:</span>
+          <span class="text-sm font-bold text-cyan-400">#${myIdx + 1}</span>
+        </div>
+        <span class="text-xs text-gray-500">${myTot.toLocaleString('pt-BR')} grãos</span>
+      </div>`;
+    })()}
   </div>`;
     }
 
@@ -2684,7 +2700,10 @@
             <div class="flex-1">
               <div class="flex justify-between text-xs mb-1">
                 <span class="${done ? 'text-green-400 line-through' : 'text-gray-300'}">${m.name}</span>
-                <span class="text-gray-500">${prog}/${m.goal}</span>
+                <div class="flex items-center gap-2">
+                  <span class="text-[9px] font-bold ${done ? 'text-green-400' : 'text-yellow-600'}">${m.prize}</span>
+                  <span class="text-gray-500">${prog}/${m.goal}</span>
+                </div>
               </div>
               <div class="bg-gray-800 rounded-full h-1.5 overflow-hidden">
                 <div class="h-full rounded-full transition-all ${done ? 'bg-green-500' : 'bg-cyan-600'}" style="width:${pct}%"></div>
@@ -3078,10 +3097,10 @@
     }
 
     const MISSIONS = [
-      { id: 'login', icon: '📲', name: 'Check-in diário', desc: 'Entrar no GrãoNet hoje', goal: 1, key: 'mLogin' },
-      { id: 'mine3', icon: '⛏️', name: 'Garimpeiro do dia', desc: 'Mine 3 grãos hoje', goal: 3, key: 'mMine' },
-      { id: 'mine10', icon: '🏭', name: 'Turno completo', desc: 'Mine 10 grãos hoje', goal: 10, key: 'mMine' },
-      { id: 'lavoura5', icon: '🌾', name: 'Ajuda na fazenda', desc: 'Contribua 5 grãos à fazenda', goal: 5, key: 'mLav' },
+      { id: 'login', icon: '📲', name: 'Check-in diário', desc: 'Entrar no GrãoNet hoje', goal: 1, key: 'mLogin', prize: '🥉 +1 Cobre' },
+      { id: 'mine3', icon: '⛏️', name: 'Garimpeiro do dia', desc: 'Mine 3 grãos hoje', goal: 3, key: 'mMine', prize: '🥉 +2 Cobre' },
+      { id: 'mine10', icon: '🏭', name: 'Turno completo', desc: 'Mine 10 grãos hoje', goal: 10, key: 'mMine', prize: '🥈 +1 Prata' },
+      { id: 'lavoura5', icon: '🌾', name: 'Ajuda na fazenda', desc: 'Contribua 5 grãos à fazenda', goal: 5, key: 'mLav', prize: '🥈 +1 Prata' },
     ];
 
     async function loadMissions() {
