@@ -1917,12 +1917,28 @@
           ${isMe ? '<span class="text-[10px] px-2 py-0.5 bg-cyan-900/50 text-cyan-300 border border-cyan-700 rounded-full">Você</span>' : ''}
         </div>
         <div class="text-gray-400 text-sm mt-1">${fmtK(tot)} grão${tot !== 1 ? 's' : ''} minerado${tot !== 1 ? 's' : ''}</div>
-        ${isMe ? `<div class="mt-1.5 flex items-center gap-2 flex-wrap">
-          ${S.user_profile?.pix_key
-            ? `<span class="text-[10px] text-green-400">💳 ${S.user_profile.pix_key_type?.toUpperCase() || 'PIX'}: ${S.user_profile.pix_key}</span>`
-            : `<span class="text-[10px] text-gray-600 italic">Sem chave PIX</span>`}
-          <button onclick="go('bank')" class="text-[10px] text-cyan-600 hover:text-cyan-400 transition-colors">editar →</button>
-        </div>` : ''}
+        ${isMe ? `<div class="mt-1.5">
+          ${S.editingPix ? `
+            <div class="flex flex-wrap gap-2 mt-1">
+              <select id="perfil-pix-type" class="bg-gray-800 border border-gray-700 rounded-lg px-2 py-1 text-[10px] outline-none focus:border-green-500">
+                <option value="cpf" ${S.user_profile?.pix_key_type==='cpf'?'selected':''}>CPF</option>
+                <option value="telefone" ${S.user_profile?.pix_key_type==='telefone'?'selected':''}>Telefone</option>
+                <option value="email" ${S.user_profile?.pix_key_type==='email'?'selected':''}>Email</option>
+                <option value="aleatoria" ${S.user_profile?.pix_key_type==='aleatoria'?'selected':''}>Aleatória</option>
+              </select>
+              <input id="perfil-pix-key" type="text" value="${S.user_profile?.pix_key || ''}" placeholder="Sua chave PIX..." class="flex-1 min-w-0 bg-gray-800 border border-gray-700 rounded-lg px-2 py-1 text-[10px] outline-none focus:border-green-500">
+              <button onclick="salvarPixPerfil()" class="text-[10px] bg-green-700 hover:bg-green-600 text-white px-2 py-1 rounded-lg transition-colors">Salvar</button>
+              <button onclick="S.editingPix=false;render()" class="text-[10px] text-gray-500 hover:text-white px-1 transition-colors">✕</button>
+            </div>
+          ` : `
+            <div class="flex items-center gap-2 flex-wrap">
+              ${S.user_profile?.pix_key
+                ? `<span class="text-[10px] text-green-400">💳 ${S.user_profile.pix_key_type?.toUpperCase()||'PIX'}: ${S.user_profile.pix_key}</span>`
+                : `<span class="text-[10px] text-gray-600 italic">Sem chave PIX</span>`}
+              <button onclick="S.editingPix=true;render()" class="text-[10px] text-cyan-600 hover:text-cyan-400 transition-colors">editar →</button>
+            </div>
+          `}
+        </div>` : (S.user_profile?.pix_key ? `<div class="mt-1.5 text-[10px] text-gray-600">💳 ${S.user_profile.pix_key_type?.toUpperCase()||'PIX'}: ${'•'.repeat(Math.min(12, (S.user_profile.pix_key||'').length))}</div>` : '')}
       </div>
     </div>
 
@@ -2335,6 +2351,20 @@
       const pw = document.getElementById('admin-pw')?.value;
       if (pw === '4558') { S.adminAuthed = true; go('admin', {}, true); }
       else { AudioEngine.play('error'); toast('Senha incorreta.', 'error'); }
+    }
+
+    async function salvarPixPerfil() {
+      const key = document.getElementById('perfil-pix-key')?.value?.trim();
+      const type = document.getElementById('perfil-pix-type')?.value || 'manual';
+      if (!key) return toast('Informe a chave PIX', 'warning');
+      const { error } = await sb.from('users').update({ pix_key: key, pix_key_type: type }).eq('discord_id', S.user.id);
+      if (error) return toast('Erro: ' + error.message, 'error');
+      if (!S.user_profile) S.user_profile = {};
+      S.user_profile.pix_key = key;
+      S.user_profile.pix_key_type = type;
+      S.editingPix = false;
+      toast('Chave PIX salva!', 'success');
+      render();
     }
 
     async function marcarSaquePago(id) {
