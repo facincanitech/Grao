@@ -846,7 +846,7 @@
       await db.settings.put({ key: 'lastMine', value: now });
       sbUpsertGrain(grain);
       sb.from('users').update({ last_mine: now }).eq('discord_id', user.id).then(() => { });
-      addGrainToLavoura(grain);
+      await addGrainToLavoura(grain);
 
       S.mining = false;
       S.miningProgress = 100;
@@ -1114,7 +1114,11 @@
     async function handleHarvest() {
       try {
         const { data } = await sb.rpc('harvest_lavoura', { p_lavoura_id: S.lavoura.id });
-        if (data?.error) return; // outro device já colheu
+        if (data?.error) {
+          await loadLavoura();
+          render();
+          return;
+        }
         const lavNum = S.lavoura.number;
         const isWinner = data.top_id === S.user.id;
         if (isWinner) {
@@ -1145,6 +1149,7 @@
           toast(`🌾 Lavoura #${lavNum} colhida! Top contribuidor: ${data.top_name}`, 'info', 5000);
         }
         await loadLavoura();
+        render();
       } catch (e) { }
     }
 
@@ -1424,6 +1429,7 @@
         }
       } else if (page === 'mine') {
         if (S.user) S.data.inventory = await db.grains.where('owner').equals(S.user.id).toArray();
+        await loadLavoura();
       } else if (page === 'store' || page === 'bank') {
         if (S.user) {
           const { data: profile } = await sb.from('users').select('real_balance, total_withdrawn').eq('discord_id', S.user.id).single();
