@@ -1405,23 +1405,21 @@
         S.data.marketListings = listings || [];
         if (S.user) S.data.inventory = await db.grains.where('owner').equals(S.user.id).toArray();
 
-        if (S.marketTab === 'brl') {
+        if (S.marketTab === 'transfer') {
+          if (S.user) {
+            const transfers = await db.transfers.where('from_user').equals(S.user.id).or('to_user').equals(S.user.id)
+              .reverse().limit(15).toArray();
+            S.data.transfers = transfers || [];
+          }
+        } else {
           const selectedRarity = S.mktHistoryRarity || 'brass';
           const { data: history } = await sb.from('market_listings_brl').select('price, sold_at').eq('rarity', selectedRarity).eq('status', 'sold').order('sold_at', { ascending: true }).limit(20);
           const { data: listingsBRL } = await sb.from('market_listings_brl').select('*').order('created_at', { ascending: false });
           S.data.marketBRLHistory = history || [];
           S.data.marketBRLListings = listingsBRL || [];
-
           if (S.user) {
-            // Buscar perfil para saldo
             const { data: profile } = await sb.from('users').select('real_balance').eq('discord_id', S.user.id).single();
             S.user_profile = profile;
-          }
-        } else if (S.marketTab === 'transfer') {
-          if (S.user) {
-            const transfers = await db.transfers.where('from_user').equals(S.user.id).or('to_user').equals(S.user.id)
-              .reverse().limit(15).toArray();
-            S.data.transfers = transfers || [];
           }
         }
       } else if (page === 'ranking') {
