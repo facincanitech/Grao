@@ -1440,6 +1440,9 @@
       } else if (page === 'mine') {
         if (S.user) S.data.inventory = await db.grains.where('owner').equals(S.user.id).toArray();
         await loadLavoura();
+      } else if (page === 'event') {
+        if (S.user) S.data.inventory = await db.grains.where('owner').equals(S.user.id).toArray();
+        await loadMissions();
       } else if (page === 'profile') {
         if (!S.data.ranking?.grains?.length) {
           try {
@@ -1838,6 +1841,25 @@
         </div>`).join('')}
       </div>` : ''}
     </div>
+
+    ${isMe && (S.purchased_skins || []).length > 0 ? `<div class="bg-gray-900 rounded-2xl p-5 mb-5 border border-gray-800">
+      <div class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">🎨 Minhas Skins</div>
+      <div class="space-y-2">
+        <div class="flex items-center justify-between py-1.5 px-2 rounded ${S.theme === 'default' ? 'bg-gray-800' : 'hover:bg-gray-800/40'} transition-colors">
+          <span class="text-xs">🌾 Padrão GrãoNet</span>
+          ${S.theme === 'default' ? '<span class="text-[10px] text-green-400 font-bold">Ativa</span>' : `<button onclick="applyTheme('default')" class="text-[10px] text-gray-400 hover:text-white transition-colors">Ativar</button>`}
+        </div>
+        ${(S.purchased_skins || []).map(sid => {
+          const sk = SKINS[sid];
+          if (!sk) return '';
+          const active = S.theme === sid;
+          return `<div class="flex items-center justify-between py-1.5 px-2 rounded ${active ? 'bg-gray-800' : 'hover:bg-gray-800/40'} transition-colors">
+            <span class="text-xs">${sk.name}</span>
+            ${active ? '<span class="text-[10px] text-green-400 font-bold">Ativa</span>' : `<button onclick="applyTheme('${sid}')" class="text-[10px] text-gray-400 hover:text-white transition-colors">Ativar</button>`}
+          </div>`;
+        }).join('')}
+      </div>
+    </div>` : ''}
 
     ${isMe ? `<div class="bg-gray-900 rounded-2xl p-5 border border-gray-800">
       <div class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">📋 Missões do dia</div>
@@ -2501,44 +2523,56 @@
 
       <!-- SKINS SECTION -->
       <div class="bg-gray-900 border border-gray-800 rounded-2xl p-6">
-        <h3 class="text-lg font-bold text-gray-400 mb-4">Loja de Skins</h3>
-        
-        <div class="grid grid-cols-1 gap-3 mb-6">
-          <div class="bg-gray-950 border border-gray-800 p-4 rounded-xl flex items-center justify-between group hover:border-green-900/50 transition-all">
+        <h3 class="text-lg font-bold text-gray-400 mb-1">Loja de Skins</h3>
+        <p class="text-[10px] text-gray-500 mb-4">Skins são permanentes — compre uma vez e use para sempre.</p>
+
+        <div class="grid grid-cols-1 gap-3 mb-4">
+          ${Object.values(SKINS).map(sk => {
+            const owned = (S.purchased_skins || []).includes(sk.id);
+            const active = S.theme === sk.id;
+            return `<div class="bg-gray-950 border ${owned ? 'border-green-900/40' : 'border-gray-800'} p-4 rounded-xl flex items-center justify-between group hover:border-green-900/50 transition-all">
+              <div class="flex items-center gap-4">
+                <div class="w-12 h-12 bg-green-950/30 rounded-lg flex items-center justify-center text-2xl group-hover:scale-110 transition-transform">🌿</div>
+                <div>
+                  <div class="text-sm font-bold text-gray-300">${sk.name}</div>
+                  <div class="text-[10px] text-gray-500">${sk.desc}</div>
+                  ${owned ? '<div class="text-[9px] text-green-400 font-bold mt-0.5">✓ Adquirida</div>' : `<div class="text-[9px] text-gray-600 mt-0.5">R$ ${sk.price.toFixed(2)} · permanente</div>`}
+                </div>
+              </div>
+              <div class="flex flex-col gap-1 items-end shrink-0">
+                ${owned
+                  ? (active
+                    ? `<button onclick="applyTheme('default')" class="bg-gray-700 hover:bg-gray-600 text-gray-300 px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all">Ativa ✓</button>`
+                    : `<button onclick="applyTheme('${sk.id}')" class="bg-green-800 hover:bg-green-700 text-white px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all">Ativar</button>`)
+                  : `<button onclick="comprarSkin('${sk.id}')" class="bg-gray-800 hover:bg-green-800 text-gray-300 hover:text-white px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all">R$ ${sk.price.toFixed(2)}</button>`}
+              </div>
+            </div>`;
+          }).join('')}
+
+          <div class="bg-gray-950 border border-gray-800 p-4 rounded-xl flex items-center justify-between opacity-40">
             <div class="flex items-center gap-4">
-              <div class="w-12 h-12 bg-green-950/30 rounded-lg flex items-center justify-center text-2xl group-hover:scale-110 transition-transform">🌿</div>
+              <div class="w-12 h-12 bg-cyan-950/30 rounded-lg flex items-center justify-center text-2xl">🌌</div>
               <div>
-                <div class="text-sm font-bold text-gray-300">Skin Cannabis (ErvaNet)</div>
-                <div class="text-[10px] text-gray-600 italic">Rebranding total para tema canábico.</div>
+                <div class="text-sm font-bold text-gray-300">CyberNet</div>
+                <div class="text-[10px] text-gray-600">Interface holográfica e neon tecnológico.</div>
               </div>
             </div>
-            <div class="text-[10px] font-bold text-gray-500 uppercase tracking-tighter bg-gray-900 px-2 py-1 rounded">Em Breve</div>
+            <div class="text-[10px] font-bold text-gray-500 bg-gray-900 px-2 py-1 rounded">Em Breve</div>
           </div>
 
-          <div class="bg-gray-950 border border-gray-800 p-4 rounded-xl flex items-center justify-between group hover:border-cyan-900/50 transition-all">
-            <div class="flex items-center gap-4">
-              <div class="w-12 h-12 bg-cyan-950/30 rounded-lg flex items-center justify-center text-2xl group-hover:scale-110 transition-transform">🌌</div>
-              <div>
-                <div class="text-sm font-bold text-gray-300">Skin CyberNet (Futurista)</div>
-                <div class="text-[10px] text-gray-600 italic">Interface holográfica e neon tecnológico.</div>
-              </div>
-            </div>
-            <div class="text-[10px] font-bold text-gray-500 uppercase tracking-tighter bg-gray-900 px-2 py-1 rounded">Em Breve</div>
-          </div>
-
-          <div class="bg-gray-950 border border-gray-800 p-4 rounded-xl flex items-center justify-between opacity-50">
+          <div class="bg-gray-950 border border-gray-800 p-4 rounded-xl flex items-center justify-between opacity-40">
             <div class="flex items-center gap-4">
               <div class="w-12 h-12 bg-blue-950/30 rounded-lg flex items-center justify-center text-2xl">❄️</div>
               <div>
-                <div class="text-sm font-bold text-gray-300">Skin Inverno (Gelo)</div>
-                <div class="text-[10px] text-gray-600 italic">Tema frio com efeitos de neve.</div>
+                <div class="text-sm font-bold text-gray-300">Inverno</div>
+                <div class="text-[10px] text-gray-600">Tema frio com efeitos de neve.</div>
               </div>
             </div>
-            <div class="text-[10px] font-bold text-gray-500 uppercase tracking-tighter bg-gray-900 px-2 py-1 rounded">Em Breve</div>
+            <div class="text-[10px] font-bold text-gray-500 bg-gray-900 px-2 py-1 rounded">Em Breve</div>
           </div>
         </div>
-        
-        <div class="text-center text-[10px] text-gray-600 mt-4 border-t border-gray-800 pt-4">As skins alteram visualmente todos os nomes e ícones do sistema exclusivamente para você.</div>
+
+        <div class="text-center text-[10px] text-gray-600 border-t border-gray-800 pt-4">Skins alteram nomes e ícones do sistema exclusivamente para você.</div>
       </div>
     </div>
   </div>`;
@@ -2616,6 +2650,7 @@
 
     function pageEventSync() {
       if (!S.user) return pageLogin();
+      if (!S.eventTab) S.eventTab = 'event';
       window.evtAvailable = S.data.inventory || [];
       const counts = {};
       for (const r of ORDER) counts[r] = window.evtAvailable.filter(g => g.rarity === r).length;
@@ -2628,12 +2663,48 @@
         };
       });
 
-      return `<div class="p-4 sm:p-6 max-w-5xl mx-auto">
-    <div class="flex items-center justify-between mb-2">
-      <h2 class="text-2xl font-bold">🎲 Evento Oficial</h2>
-      <span class="px-2 py-1 bg-red-900 text-red-200 text-[10px] font-bold rounded animate-pulse">TEMPO LIMITADO</span>
+      const ms = S.missions || {};
+
+      if (S.eventTab === 'missions') {
+        return `<div class="p-4 sm:p-6 max-w-2xl mx-auto">
+    <h2 class="text-2xl font-bold mb-1">🎲 Evento</h2>
+    <div class="flex gap-2 mb-6">
+      <button onclick="S.eventTab='event'; render()" class="px-4 py-1.5 rounded-lg text-xs font-bold bg-gray-800 text-gray-400 hover:text-white transition-colors">Forja & Gacha</button>
+      <button onclick="S.eventTab='missions'; render()" class="px-4 py-1.5 rounded-lg text-xs font-bold bg-cyan-900/50 text-cyan-300 border border-cyan-700/50">Missões Diárias</button>
     </div>
-    <p class="text-gray-400 text-sm mb-6">Queime seus grãos para forjar minérios mais raros ou tentar a sorte grande no Caça-Níquel. <br><span class="text-xs text-yellow-500">Aviso: Grãos gastos são destruídos permanentemente. A raridade Nióbio não pode ser forjada. Escolha sabiamente quais grãos sacrificar!</span></p>
+    <div class="bg-gray-900 rounded-2xl p-5 border border-gray-800">
+      <div class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">📋 Missões do dia</div>
+      <div class="space-y-3">
+        ${MISSIONS.map(m => {
+          const prog = Math.min(ms[m.key] || 0, m.goal);
+          const done = prog >= m.goal;
+          const pct = Math.round((prog / m.goal) * 100);
+          return `<div class="flex items-center gap-3">
+            <span class="text-lg">${done ? '✅' : m.icon}</span>
+            <div class="flex-1">
+              <div class="flex justify-between text-xs mb-1">
+                <span class="${done ? 'text-green-400 line-through' : 'text-gray-300'}">${m.name}</span>
+                <span class="text-gray-500">${prog}/${m.goal}</span>
+              </div>
+              <div class="bg-gray-800 rounded-full h-1.5 overflow-hidden">
+                <div class="h-full rounded-full transition-all ${done ? 'bg-green-500' : 'bg-cyan-600'}" style="width:${pct}%"></div>
+              </div>
+              <div class="text-[9px] text-gray-600 mt-0.5">${m.desc}</div>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>
+  </div>`;
+      }
+
+      return `<div class="p-4 sm:p-6 max-w-5xl mx-auto">
+    <h2 class="text-2xl font-bold mb-1">🎲 Evento Oficial</h2>
+    <div class="flex gap-2 mb-4">
+      <button onclick="S.eventTab='event'; render()" class="px-4 py-1.5 rounded-lg text-xs font-bold bg-red-900/50 text-red-300 border border-red-700/50">Forja & Gacha</button>
+      <button onclick="S.eventTab='missions'; render()" class="px-4 py-1.5 rounded-lg text-xs font-bold bg-gray-800 text-gray-400 hover:text-white transition-colors">Missões Diárias</button>
+    </div>
+    <p class="text-gray-400 text-sm mb-4">Queime seus grãos para forjar minérios mais raros ou tentar a sorte grande no Caça-Níquel. <br><span class="text-xs text-yellow-500">Aviso: Grãos gastos são destruídos permanentemente. A raridade Nióbio não pode ser forjada.</span></p>
 
     <div class="grid md:grid-cols-2 gap-6">
       
