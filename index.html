@@ -598,6 +598,9 @@
       theme: 'default',
       purchased_skins: [],
       autoClicker: false,
+      acUsed: 0,
+      acDate: '',
+      acSessionStart: 0,
       is_vip: false,
       is_trial: false,
       trial_until: 0,
@@ -677,8 +680,11 @@
     // DIFICULDADE
     // ═══════════════════════════════════════════════════════
     function diffOffset() { return Math.floor(S.networkSize / 50) }
-    // 5min base + 1min por nó adicional, máx 60min
-    function cooldownMs() { return Math.min(CFG.BASE_COOLDOWN_MS + (S.networkSize - 1) * 60000, 60 * 60 * 1000) }
+    // 5min base + 1min por nó adicional, máx 60min — VIP tem 50% de redução
+    function cooldownMs() {
+      const base = Math.min(CFG.BASE_COOLDOWN_MS + (S.networkSize - 1) * 60000, 60 * 60 * 1000);
+      return S.is_vip ? Math.floor(base * 0.5) : base;
+    }
     function minZeros() { return 1 + diffOffset() }
     function rarityForZeros(z) {
       const o = diffOffset();
@@ -1703,17 +1709,20 @@
           ⛏️ Começar ${getLabel('mining')}
         </button>
 
-        ${(S.is_vip || S.is_trial) ? `
-          <div class="mt-6 pt-6 border-t border-gray-800 flex flex-col items-center gap-3">
-            <div class="flex items-center gap-3 bg-purple-900/20 border border-purple-500/30 px-4 py-2 rounded-full">
-              <span class="text-sm">🤖 Auto-Clicker</span>
-              <button onclick="S.autoClicker = !S.autoClicker; render(); if(S.autoClicker) startMining();" class="px-4 py-1 rounded-lg text-[10px] font-bold transition-all ${S.autoClicker ? 'bg-green-600 text-white shadow-[0_0_10px_rgba(22,163,74,0.5)]' : 'bg-gray-800 text-gray-400'}">
-                ${S.autoClicker ? 'ATIVADO' : 'DESATIVADO'}
-              </button>
-            </div>
-            ${S.autoClicker ? '<p class="text-[10px] text-purple-400 animate-pulse">O minerador iniciará automaticamente após o cooldown.</p>' : ''}
+        <div class="mt-6 pt-6 border-t border-gray-800 flex flex-col items-center gap-3">
+          <div class="flex items-center gap-3 bg-gray-900 border border-gray-700 px-4 py-2 rounded-full">
+            <span class="text-sm">🤖 Auto-Clicker</span>
+            <button onclick="toggleAutoClicker()" class="px-4 py-1 rounded-lg text-[10px] font-bold transition-all ${S.autoClicker ? 'bg-green-600 text-white shadow-[0_0_10px_rgba(22,163,74,0.5)]' : 'bg-gray-800 text-gray-400'}">
+              ${S.autoClicker ? 'ATIVADO' : 'DESATIVADO'}
+            </button>
           </div>
-        ` : ''}
+          <p class="text-[10px] ${S.acUsed >= acMaxSessions() ? 'text-red-400' : 'text-gray-500'}">
+            ${acRemaining()} sessão(ões) restante(s) hoje · 1h cada
+            ${S.is_vip ? '<span class="text-purple-400 ml-1">👑 VIP (10x/dia · cooldown -50%)</span>' : '<span class="text-gray-600 ml-1">Free (3x/dia)</span>'}
+          </p>
+          ${S.autoClicker ? `<p class="text-[10px] text-green-500 animate-pulse">⛏️ Ativo · encerra ${new Date(S.acSessionStart + 3600000).toLocaleTimeString('pt-BR', {hour:'2-digit',minute:'2-digit'})}</p>` : ''}
+          <p class="text-[10px] text-yellow-700">⚠️ Mantenha a tela ligada e esta página aberta</p>
+        </div>
       `}
     </div>
   </div>`;
@@ -2049,9 +2058,12 @@
       render();
       try {
         const { data, error } = await sb.functions.invoke('gerar-pix-deposito', {
-          body: { userId: S.user.id, valor: amount.toFixed(2) }
+          body: { valor: amount.toFixed(2) }
         });
-        if (error) throw error;
+        if (error) {
+          const body = await error.context?.json?.().catch(() => null);
+          throw new Error(body?.error || error.message);
+        }
         S.pixModal = { loading: false, qrcode: data.qrcode, copia_e_cola: data.copia_e_cola, txid: data.txid, type: 'deposito' };
         render();
         iniciarPollingPix(data.txid, 'deposito');
@@ -2852,6 +2864,56 @@
     // ═══════════════════════════════════════════════════════
     // TIMER DE COOLDOWN
     // ═══════════════════════════════════════════════════════
+    const AC_DURATION = 60 * 60 * 1000; // 1 hora por sessão
+    function acMaxSessions() { return S.is_vip ? 10 : 3; }
+    function acRemaining() { return Math.max(0, acMaxSessions() - S.acUsed); }
+    function todayStr() { return new Date().toISOString().slice(0, 10); }
+
+    async function loadAcState() {
+      const d = await db.settings.get('acDate');
+      const u = await db.settings.get('acUsed');
+      const today = todayStr();
+      if (d?.value !== today) {
+        S.acDate = today;
+        S.acUsed = 0;
+        await db.settings.put({ key: 'acDate', value: today });
+        await db.settings.put({ key: 'acUsed', value: 0 });
+      } else {
+        S.acDate = today;
+        S.acUsed = u?.value || 0;
+      }
+    }
+
+    async function toggleAutoClicker() {
+      if (S.autoClicker) {
+        S.autoClicker = false;
+        S.acSessionStart = 0;
+        render();
+        return;
+      }
+      await loadAcState();
+      if (acRemaining() <= 0) {
+        toast(`Limite de sessões atingido hoje (${acMaxSessions()}x). Volte amanhã!`, 'warning', 4000);
+        return;
+      }
+      S.autoClicker = true;
+      S.acSessionStart = Date.now();
+      render();
+      startMining(true);
+    }
+
+    async function checkAcSession() {
+      if (!S.autoClicker || !S.acSessionStart) return;
+      if (Date.now() - S.acSessionStart >= AC_DURATION) {
+        S.autoClicker = false;
+        S.acSessionStart = 0;
+        S.acUsed = Math.min(S.acUsed + 1, acMaxSessions());
+        await db.settings.put({ key: 'acUsed', value: S.acUsed });
+        toast(`🤖 Sessão de Auto-Clicker encerrada. Restam ${acRemaining()} sessão(ões) hoje.`, 'info', 5000);
+        render();
+      }
+    }
+
     let cdTimerActive = false;
     function startCdTimer() {
       if (cdTimerActive) return;
@@ -2893,11 +2955,9 @@
             btn.innerHTML = `⛏️ Começar ${getLabel('mining')}`;
           }
           // Se autoClicker estiver on e não estiver minerando agora, clica
-          const canAuto = S.is_vip || (S.is_trial && Date.now() < S.trial_until);
-          if (S.autoClicker && !S.mining && canAuto) {
-            console.log('🤖 Auto-Clicker Triggered');
-            toast('🤖 Auto-Clicker: Iniciando...', 'info', 1500);
-            startMining(true); // Silent start
+          await checkAcSession();
+          if (S.autoClicker && !S.mining) {
+            startMining(true);
           }
           setTimeout(tick, 1000); // Keep checking for next mine
           return;
@@ -3110,6 +3170,7 @@
         if (notifPref) S.notificationsEnabled = notifPref.value;
 
         await loadLavoura();
+        await loadAcState();
         await updateOnlineCount();
         await go(S.page || 'inventory', {}, true);
         setupBackButton();
@@ -3119,7 +3180,7 @@
           startPresence();
           setupRealtime();
 
-          if ((S.is_vip || (S.is_trial && Date.now() < S.trial_until)) && S.autoClicker) {
+          if (S.autoClicker) {
             setTimeout(() => startMining(), 3000);
           }
         }
