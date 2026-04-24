@@ -1154,9 +1154,9 @@
             gained.push(`${RARITY[rarity].emoji} ${id}`);
           }
           spawnParticles(rewards[rewards.length - 1]);
-          toast(`🌾 Lavoura #${lavNum} colhida! Você foi o top! +${gained.join(' · ')}`, 'success', 8000);
+          toast(`🌾 Fazenda #${lavNum} colhida! Você foi o top! +${gained.join(' · ')}`, 'success', 8000);
         } else {
-          toast(`🌾 Lavoura #${lavNum} colhida! Top contribuidor: ${data.top_name}`, 'info', 5000);
+          toast(`🌾 Fazenda #${lavNum} colhida! Top contribuidor: ${data.top_name}`, 'info', 5000);
         }
         await loadLavoura();
         render();
@@ -1651,7 +1651,7 @@
 
     ${S.lavoura ? `<div class="bg-gray-900 rounded-lg p-4 mb-4 border border-green-900/40">
       <div class="flex items-center justify-between mb-2">
-        <div class="text-[10px] text-green-400 font-bold uppercase tracking-wide">🌾 Lavoura #${S.lavoura.number} — Ativa</div>
+        <div class="text-[10px] text-green-400 font-bold uppercase tracking-wide">🌾 Fazenda #${S.lavoura.number} — Ativa</div>
         <div class="text-[10px] text-gray-400">${lavouraRewards(S.lavoura.number).map(r => RARITY[r].emoji).join(' ')}</div>
       </div>
       <div class="bg-gray-800 rounded-full h-3 overflow-hidden mb-2">
@@ -3001,7 +3001,7 @@
       { id: 'login', icon: '📲', name: 'Check-in diário', desc: 'Entrar no GrãoNet hoje', goal: 1, key: 'mLogin' },
       { id: 'mine3', icon: '⛏️', name: 'Garimpeiro do dia', desc: 'Mine 3 grãos hoje', goal: 3, key: 'mMine' },
       { id: 'mine10', icon: '🏭', name: 'Turno completo', desc: 'Mine 10 grãos hoje', goal: 10, key: 'mMine' },
-      { id: 'lavoura5', icon: '🌾', name: 'Ajuda na lavoura', desc: 'Contribua 5 grãos à lavoura', goal: 5, key: 'mLav' },
+      { id: 'lavoura5', icon: '🌾', name: 'Ajuda na fazenda', desc: 'Contribua 5 grãos à fazenda', goal: 5, key: 'mLav' },
     ];
 
     async function loadMissions() {
