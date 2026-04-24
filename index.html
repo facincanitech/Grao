@@ -1510,8 +1510,8 @@
         }
       } else if (page === 'ranking') {
         try {
-          const { data: gData } = await sb.from('grains').select('id,rarity,owner,discord_user,discord_id').limit(999999999);
-          const { data: uData } = await sb.from('users').select('discord_id,username,is_vip,theme').limit(999999999);
+          const { data: gData } = await sb.from('grains').select('id,rarity,owner,discord_user,discord_id').range(0, 99999);
+          const { data: uData } = await sb.from('users').select('discord_id,username,is_vip,theme').range(0, 9999);
           if (gData && uData) {
             S.data.ranking = { grains: gData, users: uData };
             S.data.rankingSource = 'global';
@@ -1916,12 +1916,12 @@
           ${isVip ? '<span class="text-[10px] px-2 py-0.5 bg-purple-900/50 text-purple-300 border border-purple-700 rounded-full font-bold">VIP</span>' : ''}
           ${isMe ? '<span class="text-[10px] px-2 py-0.5 bg-cyan-900/50 text-cyan-300 border border-cyan-700 rounded-full">Você</span>' : ''}
         </div>
-        <div class="text-gray-400 text-sm mt-1">${tot.toLocaleString('pt-BR')} grão${tot !== 1 ? 's' : ''} minerado${tot !== 1 ? 's' : ''}</div>
-        ${isMe ? `<div class="mt-2 flex items-center gap-2 flex-wrap">
+        <div class="text-gray-400 text-sm mt-1">${fmtK(tot)} grão${tot !== 1 ? 's' : ''} minerado${tot !== 1 ? 's' : ''}</div>
+        ${isMe ? `<div class="mt-1.5 flex items-center gap-2 flex-wrap">
           ${S.user_profile?.pix_key
-            ? `<span class="text-[10px] text-green-400 bg-green-900/20 border border-green-900/40 rounded-full px-2 py-0.5">💳 ${S.user_profile.pix_key_type?.toUpperCase() || 'PIX'}: ${S.user_profile.pix_key}</span>`
-            : `<span class="text-[10px] text-gray-500 italic">Sem chave PIX cadastrada</span>`}
-          <button onclick="go('bank')" class="text-[10px] text-cyan-500 hover:underline">editar →</button>
+            ? `<span class="text-[10px] text-green-400">💳 ${S.user_profile.pix_key_type?.toUpperCase() || 'PIX'}: ${S.user_profile.pix_key}</span>`
+            : `<span class="text-[10px] text-gray-600 italic">Sem chave PIX</span>`}
+          <button onclick="go('bank')" class="text-[10px] text-cyan-600 hover:text-cyan-400 transition-colors">editar →</button>
         </div>` : ''}
       </div>
     </div>
