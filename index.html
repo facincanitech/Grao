@@ -2491,12 +2491,24 @@
 
     async function marcarSaquePago(id) {
       if (!confirm('Confirmar pagamento deste saque?')) return;
+      const { data: req, error: reqErr } = await sb.from('withdrawal_requests').select('*').eq('id', id).single();
+      if (reqErr || !req) { toast('Erro ao buscar saque: ' + (reqErr?.message || 'não encontrado'), 'error'); return; }
+
       const { error } = await sb.from('withdrawal_requests')
         .update({ status: 'completed', processed_at: new Date().toISOString() })
         .eq('id', id);
       if (error) { toast('Erro: ' + error.message, 'error'); return; }
+
+      // deduz o saldo do usuário
+      const { data: usr } = await sb.from('users').select('real_balance, total_withdrawn').eq('discord_id', req.user_id).single();
+      if (usr) {
+        const newBalance = Math.max(0, (usr.real_balance || 0) - req.amount);
+        const newWithdrawn = (usr.total_withdrawn || 0) + req.amount;
+        await sb.from('users').update({ real_balance: newBalance, total_withdrawn: newWithdrawn }).eq('discord_id', req.user_id);
+      }
+
       AudioEngine.play('success');
-      toast('Saque marcado como pago!', 'success');
+      toast('Saque marcado como pago e saldo deduzido!', 'success');
       await go('admin', {}, true);
     }
 
