@@ -1510,15 +1510,19 @@
         }
       } else if (page === 'ranking') {
         try {
-          const { data: gData } = await sb.from('grains').select('id,rarity,owner,discord_user,discord_id').range(0, 99999);
-          const { data: uData } = await sb.from('users').select('discord_id,username,is_vip,theme').range(0, 9999);
-          const { data: cData } = await sb.from('lavoura_contributions').select('discord_id,grains_count').range(0, 99999);
+          const { data: gData, error: gErr } = await sb.from('grains').select('id,rarity,owner,discord_user,discord_id').range(0, 99999);
+          const { data: uData, error: uErr } = await sb.from('users').select('discord_id,username,is_vip,theme').range(0, 9999);
+          if (gErr) console.error('[ranking] grains error:', gErr);
+          if (uErr) console.error('[ranking] users error:', uErr);
           if (gData && uData) {
-            S.data.ranking = { grains: gData, users: uData, contributions: cData || [] };
+            S.data.ranking = { grains: gData, users: uData };
             S.data.rankingSource = 'global';
+          } else {
+            console.warn('[ranking] dados nulos — gData:', !!gData, 'uData:', !!uData);
           }
           await loadLavoura();
         } catch (e) {
+          console.error('[ranking] catch error:', e);
           const localGrains = await db.grains.toArray();
           S.data.ranking = { grains: localGrains, users: [] };
           S.data.rankingSource = 'local';
