@@ -516,7 +516,7 @@
         network_size_at_generation: grain.network_size_at_generation, owner: grain.owner,
         signature: grain.signature, transfer_history: grain.transfer_history || []
       };
-      const { error } = await sb.from('grains').upsert(row);
+      const { error } = await sb.from('grains').upsert(row, { onConflict: 'id' });
       if (error) console.warn('sb grain upsert:', error.message);
     }
 
@@ -1436,17 +1436,21 @@
 
     async function syncFromSupabase(userId) {
       try {
-        const { data, error } = await sb.from('grains').select('*').eq('owner', userId);
-        if (error || !data?.length) return;
-        let restored = 0;
-        for (const g of data) {
-          const exists = await db.grains.where('id').equals(g.id).first();
-          if (!exists) {
-            // remove campo localId se vier do supabase
-            const { localId, ...grain } = g;
-            await db.grains.add(grain);
-            restored++;
+        let restored = 0, from = 0;
+        const PAGE = 1000;
+        while (true) {
+          const { data, error } = await sb.from('grains').select('*').eq('owner', userId).range(from, from + PAGE - 1);
+          if (error || !data?.length) break;
+          for (const g of data) {
+            const exists = await db.grains.where('id').equals(g.id).first();
+            if (!exists) {
+              const { localId, ...grain } = g;
+              await db.grains.add(grain);
+              restored++;
+            }
           }
+          if (data.length < PAGE) break;
+          from += PAGE;
         }
         if (restored > 0) {
           toast(`✅ ${restored} Grão${restored !== 1 ? 's' : ''} restaurado${restored !== 1 ? 's' : ''} do servidor!`, 'success', 5000);
@@ -1893,7 +1897,7 @@
 
       const counts = Object.fromEntries(ORDER.map(r => [r, 0]));
       if (isMe) {
-        for (const g of (S.grains || [])) {
+        for (const g of (S.data.inventory || [])) {
           if (g.rarity && counts[g.rarity] !== undefined) counts[g.rarity]++;
         }
       } else {
