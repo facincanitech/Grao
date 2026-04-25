@@ -948,7 +948,7 @@
       await db.settings.put({ key: 'lastMine', value: now });
       sbUpsertGrain(grain);
       sb.from('users').update({ last_mine: now }).eq('discord_id', user.id).then(() => { });
-      if (S.data.inventory) S.data.inventory.push(grain);
+      if (S.data.inventory) S.data.inventory.push({ ...grain });
       await addGrainToLavoura(grain);
 
       S.mining = false;
@@ -1519,11 +1519,11 @@
 
       // Pré-carregamento de dados para evitar flickering
       if (page === 'inventory') {
-        if (S.user && !S.data.inventory) S.data.inventory = await loadInventoryFromSupabase(S.user.id);
+        if (S.user) S.data.inventory = await db.grains.where('owner').equals(S.user.id).toArray();
       } else if (page === 'market') {
         const { data: listings } = await sb.from('market_listings_v2').select('*').eq('status', 'active').order('created_at', { ascending: false });
         S.data.marketListings = listings || [];
-        if (S.user && !S.data.inventory) S.data.inventory = await loadInventoryFromSupabase(S.user.id);
+        if (S.user) S.data.inventory = await db.grains.where('owner').equals(S.user.id).toArray();
 
         if (S.marketTab === 'transfer') {
           if (S.user) {
@@ -1556,10 +1556,10 @@
           S.data.rankingSource = 'local';
         }
       } else if (page === 'mine') {
-        if (S.user && !S.data.inventory) S.data.inventory = await loadInventoryFromSupabase(S.user.id);
+        if (S.user) S.data.inventory = await db.grains.where('owner').equals(S.user.id).toArray();
         await loadLavoura();
       } else if (page === 'event') {
-        if (S.user && !S.data.inventory) S.data.inventory = await loadInventoryFromSupabase(S.user.id);
+        if (S.user) S.data.inventory = await db.grains.where('owner').equals(S.user.id).toArray();
         await loadMissions();
       } else if (page === 'profile') {
         if (!S.data.rankingRpc?.length) {
@@ -1567,7 +1567,7 @@
           if (rData) { S.data.rankingRpc = rData; S.data.rankingSource = 'global'; }
         }
         if (S.user) {
-          if (!S.data.inventory?.length) S.data.inventory = await loadInventoryFromSupabase(S.user.id);
+          if (!S.data.inventory?.length) S.data.inventory = await db.grains.where('owner').equals(S.user.id).toArray();
           const { data: profile } = await sb.from('users').select('real_balance, total_withdrawn, pix_key, pix_key_type').eq('discord_id', S.user.id).single();
           S.user_profile = profile;
         }
