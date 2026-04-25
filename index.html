@@ -581,7 +581,15 @@
             render();
           }
         })
-        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'users', filter: `discord_id=eq.${S.user.id}` }, (payload) => {
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'users', filter: `discord_id=eq.${S.user.id}` }, async (payload) => {
+          const myToken = localStorage.getItem('graonet_session');
+          if (payload.new.session_token && payload.new.session_token !== myToken) {
+            await sb.auth.signOut();
+            S.user = null; S.realtimeSubscribed = false;
+            toast('📱 Você entrou em outro dispositivo. Sessão encerrada aqui.', 'warning', 8000);
+            render();
+            return;
+          }
           const changed = payload.new.is_vip !== S.is_vip || payload.new.theme !== S.theme;
           S.is_vip = payload.new.is_vip;
           S.theme = payload.new.theme;
@@ -1018,6 +1026,11 @@
       toast(`Bem-vindo, ${S.user.global_name || S.user.username}!`, 'success');
       sbUpsertUser(S.user);
       updateNetworkSize();
+
+      const sessionToken = crypto.randomUUID();
+      localStorage.setItem('graonet_session', sessionToken);
+      sb.from('users').update({ session_token: sessionToken }).eq('discord_id', S.user.id).then(() => {});
+
       await syncFromSupabase(S.user.id);
       syncLocalGrains(S.user.id);
       return true;
