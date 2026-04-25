@@ -2337,7 +2337,7 @@
           const body = await error.context?.json?.().catch(() => null);
           throw new Error(body?.error || error.message);
         }
-        S.pixModal = { loading: false, qrcode: data.qrcode, copia_e_cola: data.copia_e_cola, txid: data.txid, type: 'deposito' };
+        S.pixModal = { loading: false, qrcode: data.qrcode, copia_e_cola: data.copia_e_cola, txid: data.txid, type: 'deposito', price: amount };
         render();
         iniciarPollingPix(data.txid, 'deposito');
       } catch (e) {
