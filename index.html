@@ -1887,7 +1887,7 @@
     }
 
     function pageProfileSync(uid) {
-      const { grains = [], users: sbUsers = [], contributions = [] } = S.data.ranking || {};
+      const { grains = [], users: sbUsers = [] } = S.data.ranking || {};
       const isMe = uid === S.user?.id;
       const uInfo = sbUsers.find(u => u.discord_id === uid) || {};
       const name = uInfo.username || uid;
@@ -1897,8 +1897,9 @@
       for (const g of grains) {
         if (g.owner === uid && g.rarity && counts[g.rarity] !== undefined) counts[g.rarity]++;
       }
-      const contributed = contributions.filter(c => c.discord_id === uid).reduce((s, c) => s + (c.grains_count || 0), 0);
-      const tot = Object.values(counts).reduce((a, b) => a + b, 0) + contributed;
+      const tot = isMe
+        ? (S.grains || []).length
+        : Object.values(counts).reduce((a, b) => a + b, 0);
       const badges = getBadges(counts, isVip);
       const earned = badges.filter(b => b.earned);
       const locked = badges.filter(b => !b.earned);
@@ -1918,7 +1919,6 @@
           ${isVip ? '<span class="text-[10px] px-2 py-0.5 bg-purple-900/50 text-purple-300 border border-purple-700 rounded-full font-bold">VIP</span>' : ''}
           ${isMe ? '<span class="text-[10px] px-2 py-0.5 bg-cyan-900/50 text-cyan-300 border border-cyan-700 rounded-full">Você</span>' : ''}
         </div>
-        <div class="text-gray-400 text-sm mt-1">${fmtK(tot)} grão${tot !== 1 ? 's' : ''} no total</div>
         ${isMe ? `<div class="mt-1.5">
           ${S.editingPix ? `
             <div class="flex flex-wrap gap-2 mt-1">
@@ -2027,27 +2027,22 @@
 
     function pageRankingSync() {
       if (!S.user) return pageLogin();
-      const { grains, users: sbUsers, contributions = [] } = S.data.ranking || { grains: [], users: [], contributions: [] };
+      const { grains, users: sbUsers } = S.data.ranking || { grains: [], users: [] };
       const source = S.data.rankingSource;
       const map = {};
       const emptyC = () => Object.fromEntries(ORDER.map(r => [r, 0]));
 
       for (const u of sbUsers) {
-        map[u.discord_id] = { _uid: u.discord_id, name: u.username, counts: emptyC(), is_vip: u.is_vip };
+        map[u.discord_id] = { name: u.username, counts: emptyC(), is_vip: u.is_vip };
       }
       for (const g of grains) {
         const uid = g.owner;
         if (!uid || uid.startsWith('__')) continue;
-        if (!map[uid]) map[uid] = { _uid: uid, name: g.discord_user || uid, counts: emptyC() };
+        if (!map[uid]) map[uid] = { name: g.discord_user || uid, counts: emptyC() };
         if (g.rarity && map[uid].counts[g.rarity] !== undefined) map[uid].counts[g.rarity]++;
       }
 
-      const contribMap = {};
-      for (const c of contributions) {
-        if (c.discord_id) contribMap[c.discord_id] = (contribMap[c.discord_id] || 0) + (c.grains_count || 0);
-      }
-
-      const total = u => ORDER.reduce((s, r) => s + (u.counts[r] || 0), 0) + (contribMap[u._uid] || 0);
+      const total = u => ORDER.reduce((s, r) => s + (u.counts[r] || 0), 0);
       const users = Object.entries(map).sort((a, b) => total(b[1]) - total(a[1]));
 
       const medal = i => i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i + 1}`;
