@@ -372,7 +372,7 @@
         }
       },
       cyberpunk: {
-        id: 'cyberpunk', name: 'CyberNet ☠️', price: 15, icon: '☠️',
+        id: 'cyberpunk', name: 'CyberNet ☠️', price: 5, icon: '☠️',
         desc: 'Tema cyberpunk — hackeia a rede, coleta dados e domina o Grid.',
         rarities: {
           brass: { label: 'Bit', emoji: '💾' },
@@ -387,7 +387,7 @@
         }
       },
       cannabis: {
-        id: 'cannabis', name: 'ErvaNet 🌿', price: 10, icon: '🌿',
+        id: 'cannabis', name: 'ErvaNet 🌿', price: 5, icon: '🌿',
         desc: 'Muda o visual completo para tema cannabis — raridades, ícones e textos.',
         rarities: {
           brass: { label: 'Prensado', emoji: '🧱' },
@@ -755,7 +755,7 @@
         real_balance: balance - skin.price,
         skins: newSkins
       }).eq('discord_id', S.user.id);
-      if (error) { toast('Erro ao comprar: ' + error.message, 'error'); return; }
+      if (error) { console.error('[comprarSkin] erro:', error); toast('Erro ao comprar: ' + error.message, 'error'); return; }
 
       S.purchased_skins = newSkins;
       S.user_profile = { ...S.user_profile, real_balance: balance - skin.price };
