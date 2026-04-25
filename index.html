@@ -1894,12 +1894,16 @@
       const isVip = uInfo.is_vip || (isMe && S.is_vip);
 
       const counts = Object.fromEntries(ORDER.map(r => [r, 0]));
-      for (const g of grains) {
-        if (g.owner === uid && g.rarity && counts[g.rarity] !== undefined) counts[g.rarity]++;
+      if (isMe) {
+        for (const g of (S.grains || [])) {
+          if (g.rarity && counts[g.rarity] !== undefined) counts[g.rarity]++;
+        }
+      } else {
+        for (const g of grains) {
+          if (g.owner === uid && g.rarity && counts[g.rarity] !== undefined) counts[g.rarity]++;
+        }
       }
-      const tot = isMe
-        ? (S.grains || []).length
-        : Object.values(counts).reduce((a, b) => a + b, 0);
+      const tot = Object.values(counts).reduce((a, b) => a + b, 0);
       const badges = getBadges(counts, isVip);
       const earned = badges.filter(b => b.earned);
       const locked = badges.filter(b => !b.earned);
