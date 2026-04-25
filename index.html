@@ -1887,7 +1887,7 @@
     }
 
     function pageProfileSync(uid) {
-      const { grains = [], users: sbUsers = [] } = S.data.ranking || {};
+      const { grains = [], users: sbUsers = [], contributions = [] } = S.data.ranking || {};
       const isMe = uid === S.user?.id;
       const uInfo = sbUsers.find(u => u.discord_id === uid) || {};
       const name = uInfo.username || uid;
@@ -1897,7 +1897,8 @@
       for (const g of grains) {
         if (g.owner === uid && g.rarity && counts[g.rarity] !== undefined) counts[g.rarity]++;
       }
-      const tot = Object.values(counts).reduce((a, b) => a + b, 0);
+      const contributed = contributions.filter(c => c.discord_id === uid).reduce((s, c) => s + (c.grains_count || 0), 0);
+      const tot = Object.values(counts).reduce((a, b) => a + b, 0) + contributed;
       const badges = getBadges(counts, isVip);
       const earned = badges.filter(b => b.earned);
       const locked = badges.filter(b => !b.earned);
@@ -1917,7 +1918,7 @@
           ${isVip ? '<span class="text-[10px] px-2 py-0.5 bg-purple-900/50 text-purple-300 border border-purple-700 rounded-full font-bold">VIP</span>' : ''}
           ${isMe ? '<span class="text-[10px] px-2 py-0.5 bg-cyan-900/50 text-cyan-300 border border-cyan-700 rounded-full">Você</span>' : ''}
         </div>
-        <div class="text-gray-400 text-sm mt-1">${fmtK(tot)} grão${tot !== 1 ? 's' : ''} minerado${tot !== 1 ? 's' : ''}</div>
+        <div class="text-gray-400 text-sm mt-1">${fmtK(tot)} grão${tot !== 1 ? 's' : ''} no total</div>
         ${isMe ? `<div class="mt-1.5">
           ${S.editingPix ? `
             <div class="flex flex-wrap gap-2 mt-1">
