@@ -2496,13 +2496,14 @@
       if (!confirm('Confirmar pagamento deste saque?')) return;
       const { data: req, error: reqErr } = await sb.from('withdrawal_requests').select('*').eq('id', id).single();
       if (reqErr || !req) { toast('Erro ao buscar saque: ' + (reqErr?.message || 'não encontrado'), 'error'); return; }
+      if (req.status !== 'pending') { toast('Este saque já foi processado.', 'warning'); await go('admin', {}, true); return; }
 
-      const { error } = await sb.from('withdrawal_requests')
+      const { error, count } = await sb.from('withdrawal_requests')
         .update({ status: 'completed', processed_at: new Date().toISOString() })
-        .eq('id', id);
-      if (error) { toast('Erro: ' + error.message, 'error'); return; }
+        .eq('id', id).eq('status', 'pending');
+      if (error) { toast('Erro ao atualizar: ' + error.message, 'error'); return; }
 
-      // deduz o saldo do usuário
+      // deduz o saldo do usuário apenas se o update funcionou
       const { data: usr } = await sb.from('users').select('real_balance, total_withdrawn').eq('discord_id', req.user_id).single();
       if (usr) {
         const newBalance = Math.max(0, (usr.real_balance || 0) - req.amount);
