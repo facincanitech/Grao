@@ -1885,11 +1885,11 @@
     }
 
     function pageProfileSync(uid) {
-      const { grains = [], users: sbUsers = [] } = S.data.ranking || {};
+      const rpcData = S.data.rankingRpc || [];
       const isMe = uid === S.user?.id;
-      const uInfo = sbUsers.find(u => u.discord_id === uid) || {};
-      const name = uInfo.username || uid;
-      const isVip = uInfo.is_vip || (isMe && S.is_vip);
+      const rpcUser = rpcData.find(u => u.discord_id === uid) || {};
+      const name = rpcUser.username || (isMe ? S.user?.username : uid);
+      const isVip = rpcUser.is_vip || (isMe && S.is_vip);
 
       const counts = Object.fromEntries(ORDER.map(r => [r, 0]));
       if (isMe) {
@@ -1897,9 +1897,8 @@
           if (g.rarity && counts[g.rarity] !== undefined) counts[g.rarity]++;
         }
       } else {
-        for (const g of grains) {
-          if (g.owner === uid && g.rarity && counts[g.rarity] !== undefined) counts[g.rarity]++;
-        }
+        const raw = rpcUser.counts || {};
+        for (const r of ORDER) counts[r] = raw[r] || 0;
       }
       const tot = Object.values(counts).reduce((a, b) => a + b, 0);
       const badges = getBadges(counts, isVip);
