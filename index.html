@@ -2348,7 +2348,6 @@
     }
 
     async function solicitarSaque() {
-      const saldo = S.user_profile?.real_balance || 0;
       const amountInput = document.getElementById('withdraw-amount');
       const pixInput = document.getElementById('pix-key-input');
       const pixTypeInput = document.getElementById('pix-key-type');
@@ -2358,22 +2357,24 @@
       const pixKeyType = pixTypeInput?.value || 'manual';
 
       if (amount < 1) return toast('O valor mínimo para saque é R$ 1,00', 'warning');
-      if (amount > saldo) return toast('Saldo insuficiente', 'error');
       if (!pixKey) return toast('Informe sua chave Pix', 'warning');
 
-      if (!confirm(`Confirmar saque de R$ ${amount.toFixed(2)} para a chave Pix: ${pixKey}?`)) return;
+      if (!confirm(`Solicitar saque de R$ ${amount.toFixed(2)} para a chave Pix: ${pixKey}?`)) return;
 
-      const { data, error } = await sb.rpc('solicitar_saque', {
-        target_user_id: S.user.id,
-        saque_amount: amount,
-        saque_pix_key: pixKey,
-        saque_pix_key_type: pixKeyType
+      const { error } = await sb.from('withdrawal_requests').insert({
+        user_id: S.user.id,
+        username: S.user.global_name || S.user.username,
+        amount,
+        pix_key: pixKey,
+        pix_key_type: pixKeyType,
+        status: 'pending'
       });
 
-      if (error || !data?.success) {
-        toast('Erro: ' + (data?.error || error?.message), 'error');
+      if (error) {
+        toast('Erro ao solicitar: ' + error.message, 'error');
       } else {
-        toast('Saque solicitado! Processamos em até 24h.', 'success', 5000);
+        toast('✅ Solicitação enviada! Enviaremos o PIX em até 24h.', 'success', 6000);
+        if (amountInput) amountInput.value = '';
         await go('bank', {}, true);
       }
     }
@@ -2466,7 +2467,8 @@
           <div class="bg-gray-950 rounded-xl p-4 border border-gray-800">
             <div class="flex flex-wrap gap-3 items-start justify-between mb-2">
               <div>
-                <div class="text-xs text-gray-500 font-mono">${s.user_id}</div>
+                <div class="text-xs text-white font-bold">${s.username || s.user_id}</div>
+                <div class="text-[10px] text-gray-500 font-mono">${s.user_id}</div>
                 <div class="text-[10px] text-gray-600">${new Date(s.created_at).toLocaleString('pt-BR')}</div>
               </div>
               <div class="text-right">
