@@ -1512,8 +1512,9 @@
         try {
           const { data: gData } = await sb.from('grains').select('id,rarity,owner,discord_user,discord_id').range(0, 99999);
           const { data: uData } = await sb.from('users').select('discord_id,username,is_vip,theme').range(0, 9999);
+          const { data: cData } = await sb.from('lavoura_contributions').select('discord_id,grains_count').range(0, 99999);
           if (gData && uData) {
-            S.data.ranking = { grains: gData, users: uData };
+            S.data.ranking = { grains: gData, users: uData, contributions: cData || [] };
             S.data.rankingSource = 'global';
           }
           await loadLavoura();
@@ -2025,22 +2026,27 @@
 
     function pageRankingSync() {
       if (!S.user) return pageLogin();
-      const { grains, users: sbUsers } = S.data.ranking || { grains: [], users: [] };
+      const { grains, users: sbUsers, contributions = [] } = S.data.ranking || { grains: [], users: [], contributions: [] };
       const source = S.data.rankingSource;
       const map = {};
       const emptyC = () => Object.fromEntries(ORDER.map(r => [r, 0]));
 
       for (const u of sbUsers) {
-        map[u.discord_id] = { name: u.username, counts: emptyC(), is_vip: u.is_vip };
+        map[u.discord_id] = { _uid: u.discord_id, name: u.username, counts: emptyC(), is_vip: u.is_vip };
       }
       for (const g of grains) {
         const uid = g.owner;
         if (!uid || uid.startsWith('__')) continue;
-        if (!map[uid]) map[uid] = { name: g.discord_user || uid, counts: emptyC() };
+        if (!map[uid]) map[uid] = { _uid: uid, name: g.discord_user || uid, counts: emptyC() };
         if (g.rarity && map[uid].counts[g.rarity] !== undefined) map[uid].counts[g.rarity]++;
       }
 
-      const total = u => ORDER.reduce((s, r) => s + (u.counts[r] || 0), 0);
+      const contribMap = {};
+      for (const c of contributions) {
+        if (c.discord_id) contribMap[c.discord_id] = (contribMap[c.discord_id] || 0) + (c.grains_count || 0);
+      }
+
+      const total = u => ORDER.reduce((s, r) => s + (u.counts[r] || 0), 0) + (contribMap[u._uid] || 0);
       const users = Object.entries(map).sort((a, b) => total(b[1]) - total(a[1]));
 
       const medal = i => i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i + 1}`;
