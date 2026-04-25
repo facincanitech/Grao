@@ -948,6 +948,7 @@
       await db.settings.put({ key: 'lastMine', value: now });
       sbUpsertGrain(grain);
       sb.from('users').update({ last_mine: now }).eq('discord_id', user.id).then(() => { });
+      if (S.data.inventory) S.data.inventory.push(grain);
       await addGrainToLavoura(grain);
 
       S.mining = false;
@@ -1514,11 +1515,11 @@
 
       // Pré-carregamento de dados para evitar flickering
       if (page === 'inventory') {
-        if (S.user) S.data.inventory = await loadInventoryFromSupabase(S.user.id);
+        if (S.user && !S.data.inventory) S.data.inventory = await loadInventoryFromSupabase(S.user.id);
       } else if (page === 'market') {
         const { data: listings } = await sb.from('market_listings_v2').select('*').eq('status', 'active').order('created_at', { ascending: false });
         S.data.marketListings = listings || [];
-        if (S.user) S.data.inventory = await loadInventoryFromSupabase(S.user.id);
+        if (S.user && !S.data.inventory) S.data.inventory = await loadInventoryFromSupabase(S.user.id);
 
         if (S.marketTab === 'transfer') {
           if (S.user) {
@@ -1551,10 +1552,10 @@
           S.data.rankingSource = 'local';
         }
       } else if (page === 'mine') {
-        if (S.user) S.data.inventory = await loadInventoryFromSupabase(S.user.id);
+        if (S.user && !S.data.inventory) S.data.inventory = await loadInventoryFromSupabase(S.user.id);
         await loadLavoura();
       } else if (page === 'event') {
-        if (S.user) S.data.inventory = await loadInventoryFromSupabase(S.user.id);
+        if (S.user && !S.data.inventory) S.data.inventory = await loadInventoryFromSupabase(S.user.id);
         await loadMissions();
       } else if (page === 'profile') {
         if (!S.data.rankingRpc?.length) {
