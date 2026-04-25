@@ -1557,14 +1557,12 @@
         if (S.user) S.data.inventory = await loadInventoryFromSupabase(S.user.id);
         await loadMissions();
       } else if (page === 'profile') {
-        if (!S.data.ranking?.grains?.length) {
-          try {
-            const { data: gData } = await sb.from('grains').select('id,rarity,owner,discord_user');
-            const { data: uData } = await sb.from('users').select('discord_id,username,is_vip,theme');
-            if (gData && uData) { S.data.ranking = { grains: gData, users: uData }; S.data.rankingSource = 'global'; }
-          } catch(e) {}
+        if (!S.data.rankingRpc?.length) {
+          const { data: rData } = await sb.rpc('get_ranking');
+          if (rData) { S.data.rankingRpc = rData; S.data.rankingSource = 'global'; }
         }
         if (S.user) {
+          if (!S.data.inventory?.length) S.data.inventory = await loadInventoryFromSupabase(S.user.id);
           const { data: profile } = await sb.from('users').select('real_balance, total_withdrawn, pix_key, pix_key_type').eq('discord_id', S.user.id).single();
           S.user_profile = profile;
         }
