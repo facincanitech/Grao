@@ -1434,23 +1434,35 @@
       } catch (e) { }
     }
 
+    async function loadInventoryFromSupabase(userId) {
+      const all = [];
+      let from = 0;
+      const PAGE = 1000;
+      while (true) {
+        const { data, error } = await sb.from('grains').select('*').eq('owner', userId).range(from, from + PAGE - 1);
+        if (error || !data?.length) break;
+        all.push(...data);
+        if (data.length < PAGE) break;
+        from += PAGE;
+      }
+      return all;
+    }
+
     async function syncFromSupabase(userId) {
       try {
-        let restored = 0, from = 0;
-        const PAGE = 1000;
-        while (true) {
-          const { data, error } = await sb.from('grains').select('*').eq('owner', userId).range(from, from + PAGE - 1);
-          if (error || !data?.length) break;
-          for (const g of data) {
-            const exists = await db.grains.where('id').equals(g.id).first();
-            if (!exists) {
-              const { localId, ...grain } = g;
-              await db.grains.add(grain);
-              restored++;
-            }
+        const data = await loadInventoryFromSupabase(userId);
+        if (!data.length) return;
+        let restored = 0;
+        for (const g of data) {
+          const exists = await db.grains.where('id').equals(g.id).first();
+          if (!exists) {
+            const { localId, ...grain } = g;
+            await db.grains.add(grain);
+            restored++;
+          } else {
+            const { localId, ...grain } = g;
+            await db.grains.where('id').equals(g.id).modify(grain);
           }
-          if (data.length < PAGE) break;
-          from += PAGE;
         }
         if (restored > 0) {
           toast(`✅ ${restored} Grão${restored !== 1 ? 's' : ''} restaurado${restored !== 1 ? 's' : ''} do servidor!`, 'success', 5000);
@@ -1489,11 +1501,11 @@
 
       // Pré-carregamento de dados para evitar flickering
       if (page === 'inventory') {
-        if (S.user) S.data.inventory = await db.grains.where('owner').equals(S.user.id).toArray();
+        if (S.user) S.data.inventory = await loadInventoryFromSupabase(S.user.id);
       } else if (page === 'market') {
         const { data: listings } = await sb.from('market_listings_v2').select('*').eq('status', 'active').order('created_at', { ascending: false });
         S.data.marketListings = listings || [];
-        if (S.user) S.data.inventory = await db.grains.where('owner').equals(S.user.id).toArray();
+        if (S.user) S.data.inventory = await loadInventoryFromSupabase(S.user.id);
 
         if (S.marketTab === 'transfer') {
           if (S.user) {
@@ -1526,10 +1538,10 @@
           S.data.rankingSource = 'local';
         }
       } else if (page === 'mine') {
-        if (S.user) S.data.inventory = await db.grains.where('owner').equals(S.user.id).toArray();
+        if (S.user) S.data.inventory = await loadInventoryFromSupabase(S.user.id);
         await loadLavoura();
       } else if (page === 'event') {
-        if (S.user) S.data.inventory = await db.grains.where('owner').equals(S.user.id).toArray();
+        if (S.user) S.data.inventory = await loadInventoryFromSupabase(S.user.id);
         await loadMissions();
       } else if (page === 'profile') {
         if (!S.data.ranking?.grains?.length) {
