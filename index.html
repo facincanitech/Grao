@@ -1510,21 +1510,15 @@
         }
       } else if (page === 'ranking') {
         try {
-          const { data: gData, error: gErr } = await sb.from('grains').select('id,rarity,owner,discord_user,discord_id').range(0, 99999);
-          const { data: uData, error: uErr } = await sb.from('users').select('discord_id,username,is_vip,theme').range(0, 9999);
-          if (gErr) console.error('[ranking] grains error:', gErr);
-          if (uErr) console.error('[ranking] users error:', uErr);
-          if (gData && uData) {
-            S.data.ranking = { grains: gData, users: uData };
+          const { data: rData, error: rErr } = await sb.rpc('get_ranking');
+          if (rErr) console.error('[ranking] rpc error:', rErr);
+          if (rData) {
+            S.data.rankingRpc = rData;
             S.data.rankingSource = 'global';
-          } else {
-            console.warn('[ranking] dados nulos — gData:', !!gData, 'uData:', !!uData);
           }
           await loadLavoura();
         } catch (e) {
           console.error('[ranking] catch error:', e);
-          const localGrains = await db.grains.toArray();
-          S.data.ranking = { grains: localGrains, users: [] };
           S.data.rankingSource = 'local';
         }
       } else if (page === 'mine') {
@@ -2035,31 +2029,25 @@
 
     function pageRankingSync() {
       if (!S.user) return pageLogin();
-      const { grains, users: sbUsers } = S.data.ranking || { grains: [], users: [] };
       const source = S.data.rankingSource;
-      const map = {};
+      const rData = S.data.rankingRpc || [];
       const emptyC = () => Object.fromEntries(ORDER.map(r => [r, 0]));
 
-      for (const u of sbUsers) {
-        map[u.discord_id] = { name: u.username, counts: emptyC(), is_vip: u.is_vip };
-      }
-      for (const g of grains) {
-        const uid = g.owner;
-        if (!uid || uid.startsWith('__')) continue;
-        if (!map[uid]) map[uid] = { name: g.discord_user || uid, counts: emptyC() };
-        if (g.rarity && map[uid].counts[g.rarity] !== undefined) map[uid].counts[g.rarity]++;
-      }
-
-      const total = u => ORDER.reduce((s, r) => s + (u.counts[r] || 0), 0);
-      const users = Object.entries(map).sort((a, b) => total(b[1]) - total(a[1]));
+      const users = rData.map(u => {
+        const counts = emptyC();
+        const raw = u.counts || {};
+        for (const r of ORDER) counts[r] = raw[r] || 0;
+        return { uid: u.discord_id, name: u.username, is_vip: u.is_vip, counts, total: Number(u.total) || 0 };
+      });
 
       const medal = i => i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i + 1}`;
+      const totalGrains = users.reduce((s, u) => s + u.total, 0);
 
       return `<div class="p-4 sm:p-6 max-w-5xl mx-auto">
     <h2 class="text-2xl font-bold mb-1">🏆 Ranking</h2>
     <p class="text-gray-400 text-sm mb-4">Top holders de toda a rede GrãoNet.</p>
 
-    <div class="text-[10px] text-gray-600 mb-3">${source === 'global' ? `✅ Dados globais · ${grains.length} grão(s) · ${users.length} jogador(es)` : '⚠️ Dados locais (offline)'}</div>
+    <div class="text-[10px] text-gray-600 mb-3">${source === 'global' ? `✅ Dados globais · ${fmtK(totalGrains)} grão(s) · ${users.length} jogador(es)` : '⚠️ Dados locais (offline)'}</div>
     <div class="bg-gray-900 rounded-lg overflow-x-auto scrollbar-thin">
       <table class="w-full text-xs min-w-[700px]">
         <thead>
@@ -2072,15 +2060,14 @@
         <tbody>
           ${users.length === 0
           ? `<tr><td colspan="${ORDER.length + 2}" class="text-center py-8 text-gray-600">Nenhum grão minerado ainda</td></tr>`
-          : users.slice(0, 10).map(([uid, d], i) => {
-            const tot = total(d);
-            const me = uid === S.user?.id;
+          : users.slice(0, 10).map((d, i) => {
+            const me = d.uid === S.user?.id;
             return `<tr class="border-b border-gray-800/50 hover:bg-gray-800/40 transition-colors ${me ? 'bg-gray-800/30' : ''}">
                   <td class="px-4 py-2">
                     <div class="flex items-center gap-1">
                       <span class="mr-1 text-xs">${medal(i)}</span>
                       ${d.is_vip ? '<span class="text-xs">👑</span>' : ''}
-                      <button onclick="go('profile',{uid:'${uid}'})" class="text-xs ${d.is_vip ? 'glow-gold font-bold' : (me ? 'text-cyan-400 font-bold' : 'text-gray-300 hover:text-white')} transition-colors">${d.name}</button>
+                      <button onclick="go('profile',{uid:'${d.uid}'})" class="text-xs ${d.is_vip ? 'glow-gold font-bold' : (me ? 'text-cyan-400 font-bold' : 'text-gray-300 hover:text-white')} transition-colors">${d.name}</button>
                       ${d.is_vip ? '<span class="ml-1 text-[8px] px-1 bg-purple-900/50 text-purple-300 border border-purple-700 rounded font-bold">VIP</span>' : ''}
                     </div>
                   </td>
@@ -2088,7 +2075,7 @@
                     ${d.counts[r] ? fmtK(d.counts[r]) : '<span class="text-gray-700">–</span>'}
                   </td>`).join('')}
                   <td class="text-right px-4 py-2 font-bold text-white">
-                    ${fmtK(tot)}
+                    ${fmtK(d.total)}
                   </td>
                 </tr>`;
           }).join('')}
@@ -2097,15 +2084,14 @@
     </div>
 
     ${(() => {
-      const myIdx = users.findIndex(([uid]) => uid === S.user?.id);
+      const myIdx = users.findIndex(d => d.uid === S.user?.id);
       if (myIdx === -1 || myIdx < 10) return '';
-      const myTot = total(users[myIdx][1]);
       return `<div class="mt-3 bg-gray-900 border border-cyan-900/30 rounded-lg px-4 py-3 flex items-center justify-between">
         <div class="flex items-center gap-2">
           <span class="text-xs text-gray-400">Sua posição:</span>
           <span class="text-sm font-bold text-cyan-400">#${myIdx + 1}</span>
         </div>
-        <span class="text-xs text-gray-500">${fmtK(myTot)} grãos</span>
+        <span class="text-xs text-gray-500">${fmtK(users[myIdx].total)} grãos</span>
       </div>`;
     })()}
   </div>`;
