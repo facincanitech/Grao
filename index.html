@@ -3327,6 +3327,7 @@
       }
 
       window.evtSelections[type].clear();
+      if (S.user) S.data.inventory = await db.grains.where('owner').equals(S.user.id).toArray();
       render();
     };
 
