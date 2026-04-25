@@ -7,3 +7,5 @@ extrair-pem.mjs
 registrar-webhook.mjs
 gerar-secrets.mjs
 supabase/
+hub_melhorado.html
+.claude/settings.local.json
