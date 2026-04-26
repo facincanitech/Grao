@@ -3277,6 +3277,7 @@
     }
 
     window.evtSelections = { forge: new Set(), gacha: new Set() };
+    window.evtLastSel = { forge: null, gacha: null };
     window.evtAvailable = [];
 
     function pageEventSync() {
@@ -3514,6 +3515,7 @@
       const costQty = isForge ? 10 : 5;
       const idx = ORDER.indexOf(costRarity);
       if (idx < 2) return;
+      window.evtLastSel[type] = costRarity;
 
       const set = window.evtSelections[type];
       if (set.size !== costQty) return;
@@ -3577,6 +3579,13 @@
       window.evtSelections[type].clear();
       if (S.user) S.data.inventory = await loadLocalInventory(S.user.id);
       render();
+      // restaura última seleção após render reconstruir o DOM
+      const restoredSel = document.getElementById(`evt-${type}-sel`);
+      if (restoredSel && window.evtLastSel[type]) {
+        restoredSel.value = window.evtLastSel[type];
+        if (type === 'forge') window.updateForgePreview?.();
+        else window.updateGachaPreview?.();
+      }
     };
 
     function pageLogin() {
