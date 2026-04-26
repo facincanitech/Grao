@@ -1740,16 +1740,21 @@
       const first = /[A-Z]0*1$/.test(g.id);
       const dt = new Date(g.generated_at).toLocaleDateString('pt-BR');
       const hasShine = ['diamond', 'uranium', 'opal', 'bismuth', 'niobium'].includes(g.rarity);
-      return `<div class="card-${g.rarity} rounded-lg p-3 cursor-pointer hover:scale-[1.03] transition-transform ${hasShine ? 'shine-effect' : ''} fade-in"
-    onclick="go('grain',{id:'${g.id}'})" title="${g.id}">
-    <div class="flex items-center justify-between mb-1">
+      const locked = g.lock_trade;
+      return `<div class="card-${g.rarity} rounded-lg p-3 ${hasShine ? 'shine-effect' : ''} fade-in" title="${g.id}">
+    <div class="flex items-center justify-between mb-1" onclick="go('grain',{id:'${g.id}'})" style="cursor:pointer">
       <span class="text-xl">${r.emoji}</span>
       ${first ? `<span class="text-[10px] font-bold badge-first">★ 1º</span>` : ''}
       <span class="text-[10px] text-gray-500 ml-auto">${dt}</span>
     </div>
-    <div class="font-bold text-xs font-mono" style="color:${r.color}">${g.id}</div>
-    <div class="text-[10px] text-gray-400">${r.label}</div>
-    ${!compact ? `<div class="text-[9px] text-gray-600 mt-1 truncate">Raridade: ${(g.nonce || 0).toLocaleString()}</div>` : ''}
+    <div class="font-bold text-xs font-mono mb-0.5" style="color:${r.color}" onclick="go('grain',{id:'${g.id}'})" style="cursor:pointer">${g.id}</div>
+    <div class="text-[10px] text-gray-400 mb-1">${r.label}</div>
+    ${!compact ? `
+    <div class="text-[9px] text-gray-600 mb-2 truncate">Raridade: ${(g.nonce || 0).toLocaleString()}</div>
+    ${locked
+      ? `<div class="text-[9px] text-yellow-600 font-bold">🔒 À venda</div>`
+      : `<button onclick="event.stopPropagation(); S.mktListRarity='${g.rarity}'; S.mktSelectedGrain='${g.id}'; S.marketTab='brl'; go('market')" class="w-full text-[9px] font-bold py-0.5 rounded transition-all border border-gray-700 text-gray-400 hover:border-green-600 hover:text-green-400 hover:bg-green-900/20">Vender</button>`
+    }` : ''}
   </div>`;
     }
 
@@ -1770,6 +1775,10 @@
       });
 
       return `<div class="p-4 sm:p-6">
+    <div class="mb-3 flex items-center gap-2 text-[10px] text-gray-600">
+      <span>💡</span>
+      <span>Clique em <b class="text-gray-400">Vender</b> em qualquer grão para anunciá-lo no mercado.</span>
+    </div>
     ${all.length >= 500 ? `<div class="mb-4 flex items-start gap-2 bg-yellow-900/20 border border-yellow-700/40 rounded-lg px-3 py-2 text-[11px] text-yellow-400">
       <span class="text-base leading-none mt-0.5">⚠️</span>
       <span>Você tem <strong>${all.length.toLocaleString('pt-BR')} ${getLabel('grain_pl').toLowerCase()}</strong> no inventário. Inventários grandes podem causar lentidão ao abrir o app. Considere usar a Debulhadora ou o Cassino para converter grãos comuns em raridades superiores.</span>
