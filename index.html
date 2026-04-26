@@ -264,6 +264,39 @@
       from { transform: translateX(0); }
       to   { transform: translateX(-50%); }
     }
+
+    /* ── LIGHT MODE ── */
+    body.light-mode {
+      background-color: #f1f5f9 !important;
+      color: #1e293b !important;
+    }
+    body.light-mode select,
+    body.light-mode input,
+    body.light-mode textarea {
+      color-scheme: light;
+    }
+    body.light-mode .bg-gray-950,
+    body.light-mode .bg-gray-950\/95 { background-color: #f8fafc !important; }
+    body.light-mode .bg-gray-900 { background-color: #f1f5f9 !important; }
+    body.light-mode .bg-gray-800 { background-color: #e2e8f0 !important; }
+    body.light-mode .bg-gray-700 { background-color: #cbd5e1 !important; }
+    body.light-mode .bg-gray-800\/50,
+    body.light-mode .bg-gray-900\/50,
+    body.light-mode .bg-gray-800\/40,
+    body.light-mode .bg-gray-900\/80 { background-color: #e2e8f0 !important; }
+    body.light-mode .text-gray-100 { color: #0f172a !important; }
+    body.light-mode .text-gray-200 { color: #1e293b !important; }
+    body.light-mode .text-gray-300 { color: #334155 !important; }
+    body.light-mode .text-gray-400 { color: #475569 !important; }
+    body.light-mode .text-gray-500 { color: #64748b !important; }
+    body.light-mode .text-gray-600 { color: #94a3b8 !important; }
+    body.light-mode .border-gray-800 { border-color: #cbd5e1 !important; }
+    body.light-mode .border-gray-700 { border-color: #94a3b8 !important; }
+    body.light-mode .border-gray-900 { border-color: #e2e8f0 !important; }
+    body.light-mode .border-gray-800\/50 { border-color: #e2e8f0 !important; }
+    body.light-mode header { background-color: rgba(248,250,252,0.97) !important; border-bottom-color: #cbd5e1 !important; }
+    body.light-mode .scrollbar-thin::-webkit-scrollbar-track { background: #f1f5f9; }
+    body.light-mode .scrollbar-thin::-webkit-scrollbar-thumb { background: #94a3b8; }
     @keyframes fadeIn {
       from {
         opacity: 0;
@@ -353,6 +386,7 @@
     const ORDER = ['niobium', 'bismuth', 'opal', 'uranium', 'diamond', 'gold', 'silver', 'copper', 'brass'];
     const SCORES = { niobium: 100000, bismuth: 10000, opal: 1000, uranium: 500, diamond: 100, gold: 20, silver: 5, copper: 2, brass: 1 };
     const BASE_PRICE = { brass: 0.25, copper: 0.50, silver: 1.50, gold: 5.00, diamond: 15.00, uranium: 40.00, opal: 80.00, bismuth: 200.00, niobium: null };
+    const INVENTORY_LIMIT = 200;
 
     // Salva defaults para restaurar ao trocar de skin
     const _RARITY_DEFAULTS = {};
@@ -652,6 +686,7 @@
       acceptingListing: null,
       showMenu: false,
       notificationsEnabled: false,
+      colorMode: localStorage.getItem('colorMode') || 'dark',
       theme: 'default',
       purchased_skins: [],
       autoClicker: false,
@@ -664,6 +699,7 @@
       pixModal: null,
       data: {
         inventory: [],
+        inventoryTotal: 0,
         marketListings: [],
         marketBRLListings: [],
         marketBRLHistory: [],
@@ -1483,21 +1519,32 @@
       } catch (e) { }
     }
 
+    async function loadLocalInventory(userId) {
+      const all = await db.grains.where('owner').equals(userId).toArray();
+      S.data.inventoryTotal = all.length;
+      if (all.length <= INVENTORY_LIMIT) return all;
+      // ordena raro→comum, pega os INVENTORY_LIMIT mais valiosos
+      return [...all].sort((a, b) =>
+        ORDER.indexOf(a.rarity) - ORDER.indexOf(b.rarity) ||
+        new Date(b.generated_at) - new Date(a.generated_at)
+      ).slice(0, INVENTORY_LIMIT);
+    }
+
     async function loadInventoryFromSupabase(userId) {
       try {
-        const all = [];
-        let from = 0;
-        const PAGE = 1000;
-        while (true) {
-          const { data, error } = await sb.from('grains').select('*').eq('owner', userId).range(from, from + PAGE - 1);
-          if (error || !data?.length) break;
-          all.push(...data);
-          if (data.length < PAGE) break;
-          from += PAGE;
-        }
-        if (all.length > 0) return all;
+        // count-only query: zero egress de dados
+        const { count } = await sb.from('grains')
+          .select('id', { count: 'exact', head: true })
+          .eq('owner', userId);
+        if (count != null) S.data.inventoryTotal = count;
+
+        const { data, error } = await sb.from('grains')
+          .select('id,rarity,generated_at,lock_trade')
+          .eq('owner', userId)
+          .order('generated_at', { ascending: false })
+          .limit(INVENTORY_LIMIT);
+        if (!error && data?.length) return data;
       } catch (e) { }
-      // fallback: IndexedDB local
       return db.grains.where('owner').equals(userId).toArray();
     }
 
@@ -1554,11 +1601,11 @@
 
       // Pré-carregamento de dados para evitar flickering
       if (page === 'inventory') {
-        if (S.user) S.data.inventory = await db.grains.where('owner').equals(S.user.id).toArray();
+        if (S.user) S.data.inventory = await loadLocalInventory(S.user.id);
       } else if (page === 'market') {
         const { data: listings } = await sb.from('market_listings_v2').select('*').eq('status', 'active').order('created_at', { ascending: false });
         S.data.marketListings = listings || [];
-        if (S.user) S.data.inventory = await db.grains.where('owner').equals(S.user.id).toArray();
+        if (S.user) S.data.inventory = await loadLocalInventory(S.user.id);
 
         if (S.marketTab === 'transfer') {
           if (S.user) {
@@ -1590,10 +1637,10 @@
           S.data.rankingSource = 'local';
         }
       } else if (page === 'mine') {
-        if (S.user) S.data.inventory = await db.grains.where('owner').equals(S.user.id).toArray();
+        if (S.user) S.data.inventory = await loadLocalInventory(S.user.id);
         await loadLavoura();
       } else if (page === 'event') {
-        if (S.user) S.data.inventory = await db.grains.where('owner').equals(S.user.id).toArray();
+        if (S.user) S.data.inventory = await loadLocalInventory(S.user.id);
         await loadMissions();
       } else if (page === 'profile') {
         if (!S.data.rankingRpc?.length) {
@@ -1601,7 +1648,7 @@
           if (rData) { S.data.rankingRpc = rData; S.data.rankingSource = 'global'; }
         }
         if (S.user) {
-          if (!S.data.inventory?.length) S.data.inventory = await db.grains.where('owner').equals(S.user.id).toArray();
+          if (!S.data.inventory?.length) S.data.inventory = await loadLocalInventory(S.user.id);
           const { data: profile } = await sb.from('users').select('real_balance, total_withdrawn, pix_key, pix_key_type').eq('discord_id', S.user.id).single();
           S.user_profile = profile;
         }
@@ -1710,6 +1757,10 @@
                   <span class="text-[10px] ${S.notificationsEnabled ? 'text-green-400' : 'text-gray-500'} font-bold">${S.notificationsEnabled ? 'LIGADO' : 'DESLIGADO'}</span>
                 </button>
               ` : ''}
+              <button onclick="S.colorMode = S.colorMode === 'dark' ? 'light' : 'dark'; localStorage.setItem('colorMode', S.colorMode); render()" class="w-full text-left px-4 py-3 text-xs hover:bg-gray-800 transition-colors border-b border-gray-800 flex items-center justify-between gap-2">
+                <span class="flex items-center gap-2"><span>${S.colorMode === 'dark' ? '☀️' : '🌙'}</span> Tema</span>
+                <span class="text-[10px] ${S.colorMode === 'dark' ? 'text-gray-400' : 'text-yellow-400'} font-bold">${S.colorMode === 'dark' ? 'ESCURO' : 'CLARO'}</span>
+              </button>
               <button onclick="S.showTerms = true; S.showMenu=false; render()" class="w-full text-left px-4 py-3 text-xs hover:bg-gray-800 transition-colors border-b border-gray-800 flex items-center gap-2">
                 <span>📄</span> Termos de Uso
               </button>
@@ -1742,17 +1793,20 @@
         const lastSale = sold.filter(l => l.rarity === r).pop();
         const price = lastSale ? parseFloat(lastSale.price) : BASE_PRICE[r];
         const priceStr = price == null ? 'LIVRE' : `R$${price.toFixed(2)}`;
-        return `<span style="color:${RARITY[r].color};font-size:11px;letter-spacing:1px;white-space:nowrap">${RARITY[r].emoji} ${RARITY[r].label.toUpperCase()} <b style="color:#fff">${priceStr}</b></span>`;
-      }).join('<span style="color:#333;margin:0 16px">·</span>');
+        const priceColor = S.colorMode === 'light' ? '#1e293b' : '#fff';
+        return `<span style="color:${RARITY[r].color};font-size:11px;letter-spacing:1px;white-space:nowrap">${RARITY[r].emoji} ${RARITY[r].label.toUpperCase()} <b style="color:${priceColor}">${priceStr}</b></span>`;
+      }).join(`<span style="color:${S.colorMode==='light'?'#94a3b8':'#333'};margin:0 16px">·</span>`);
 
       // separa Açafrão do Broto com gap largo + item visual no meio
-      const separator = `<span style="display:inline-block;width:60px"></span><span style="color:#2a2a2a;font-size:10px;letter-spacing:2px;vertical-align:middle">— — —</span><span style="display:inline-block;width:60px"></span>`;
+      const sepColor = S.colorMode === 'light' ? '#94a3b8' : '#2a2a2a';
+      const separator = `<span style="display:inline-block;width:60px"></span><span style="color:${sepColor};font-size:10px;letter-spacing:2px;vertical-align:middle">— — —</span><span style="display:inline-block;width:60px"></span>`;
       const half = items + separator;
       // duplica exato: animar 0→-50% é seamless porque 2ª metade === 1ª
       const track = half + half;
 
-      return `<div style="height:24px;background:#0a0a0a;border-bottom:1px solid #1a1a1a;overflow:hidden;display:flex;align-items:center">
-        <div style="display:flex;align-items:center;animation:tickerScroll 40s linear infinite;white-space:nowrap;will-change:transform">
+      const isLight = S.colorMode === 'light';
+      return `<div style="height:24px;background:${isLight?'#e2e8f0':'#0a0a0a'};border-bottom:1px solid ${isLight?'#cbd5e1':'#1a1a1a'};overflow:hidden;display:flex;align-items:center">
+        <div style="display:flex;align-items:center;animation:tickerScroll 130s linear infinite;white-space:nowrap;will-change:transform">
           ${track}
         </div>
       </div>`;
@@ -1796,14 +1850,16 @@
         return ORDER.indexOf(a.rarity) - ORDER.indexOf(b.rarity) || a.generated_at - b.generated_at;
       });
 
+      const total = S.data.inventoryTotal || all.length;
+      const overLimit = total > INVENTORY_LIMIT;
       return `<div class="p-4 sm:p-6">
-    ${all.length >= 500 ? `<div class="mb-4 flex items-start gap-2 bg-yellow-900/20 border border-yellow-700/40 rounded-lg px-3 py-2 text-[11px] text-yellow-400">
-      <span class="text-base leading-none mt-0.5">⚠️</span>
-      <span>Você tem <strong>${all.length.toLocaleString('pt-BR')} ${getLabel('grain_pl').toLowerCase()}</strong> no inventário. Inventários grandes podem causar lentidão ao abrir o app. Considere usar a Debulhadora ou o Cassino para converter grãos comuns em raridades superiores.</span>
+    ${overLimit ? `<div class="mb-4 flex items-start gap-2 bg-orange-900/20 border border-orange-700/40 rounded-lg px-3 py-2 text-[11px] text-orange-300">
+      <span class="text-base leading-none mt-0.5">📦</span>
+      <span>Você tem <strong>${total.toLocaleString('pt-BR')} ${getLabel('grain_pl').toLowerCase()}</strong> no total, mas só os <strong>${INVENTORY_LIMIT} mais raros</strong> estão visíveis. Use a <button onclick="go('event')" class="underline hover:text-white">Debulhadora</button> ou o <button onclick="go('event')" class="underline hover:text-white">Cassino</button> para converter grãos comuns em raridades superiores, ou <button onclick="go('market')" class="underline hover:text-white">Resgatar Grão</button> na aba Vender para removê-los do app.</span>
     </div>` : ''}
     <div class="flex flex-wrap gap-2 mb-3">
       <button onclick="setFilter('all')" class="px-3 py-1 rounded text-xs font-medium transition-colors border ${S.filter === 'all' ? 'bg-gray-700 border-gray-500 text-white' : 'bg-gray-900 border-gray-800 text-gray-400 hover:bg-gray-800'}">
-        Todos (${all.length})
+        Todos (${overLimit ? `${all.length}/${total.toLocaleString('pt-BR')}` : all.length})
       </button>
       ${ORDER.map(r => `<button onclick="setFilter('${r}')"
         class="px-3 py-1 rounded text-xs font-medium transition-colors border"
@@ -3519,7 +3575,7 @@
       }
 
       window.evtSelections[type].clear();
-      if (S.user) S.data.inventory = await db.grains.where('owner').equals(S.user.id).toArray();
+      if (S.user) S.data.inventory = await loadLocalInventory(S.user.id);
       render();
     };
 
@@ -3870,6 +3926,7 @@
           default: body = pageInventorySync();
         }
       } catch (e) { body = `<div class="p-6 text-red-400">Erro: ${e.message}</div>` }
+      document.body.classList.toggle('light-mode', S.colorMode === 'light');
       app.innerHTML = renderHeader() + `<main>${body}</main>`;
 
       if (S.page === 'mine') startCdTimer();
