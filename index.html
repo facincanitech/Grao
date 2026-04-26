@@ -348,6 +348,7 @@
     };
     const ORDER = ['niobium', 'bismuth', 'opal', 'uranium', 'diamond', 'gold', 'silver', 'copper', 'brass'];
     const SCORES = { niobium: 100000, bismuth: 10000, opal: 1000, uranium: 500, diamond: 100, gold: 20, silver: 5, copper: 2, brass: 1 };
+    const BASE_PRICE = { brass: 0.25, copper: 0.50, silver: 1.50, gold: 5.00, diamond: 15.00, uranium: 40.00, opal: 80.00, bismuth: 200.00, niobium: null };
 
     // Salva defaults para restaurar ao trocar de skin
     const _RARITY_DEFAULTS = {};
@@ -1561,8 +1562,7 @@
             S.data.transfers = transfers || [];
           }
         } else {
-          const selectedRarity = S.mktHistoryRarity || 'brass';
-          const { data: history } = await sb.from('market_listings_brl').select('price, sold_at').eq('rarity', selectedRarity).eq('status', 'sold').order('sold_at', { ascending: true }).limit(20);
+          const { data: history } = await sb.from('market_listings_brl').select('price, sold_at, rarity').eq('status', 'sold').order('sold_at', { ascending: true }).limit(500);
           const { data: listingsBRL } = await sb.from('market_listings_brl').select('*').order('created_at', { ascending: false });
           S.data.marketBRLHistory = history || [];
           S.data.marketBRLListings = listingsBRL || [];
@@ -2212,36 +2212,53 @@
 
       return `
     <!-- STATS BAR -->
-    <div class="flex gap-3 mb-4 overflow-x-auto pb-1">
-      ${ORDER.map(r => {
+    <div class="flex gap-2 mb-4 overflow-x-auto pb-1">
+      ${ORDER.slice().reverse().map(r => {
         const sold = allSold.filter(l => l.rarity === r);
-        const last = sold.length ? parseFloat(sold[sold.length-1].price) : null;
+        const last = sold.length ? parseFloat(sold[sold.length-1].price) : BASE_PRICE[r];
         const asks = activeListings.filter(l => l.rarity === r);
-        return `<button onclick="S.mktHistoryRarity='${r}'; go('market')" class="flex-shrink-0 flex flex-col items-center gap-0.5 px-3 py-2 rounded-lg border transition-all cursor-pointer ${selectedRarity === r ? 'border-gray-500 bg-gray-800' : 'border-gray-800 bg-gray-900 hover:border-gray-700'}">
+        const isActive = selectedRarity === r;
+        return `<button onclick="S.mktHistoryRarity=(S.mktHistoryRarity==='${r}'?null:'${r}'); go('market')" class="flex-shrink-0 flex flex-col items-center gap-0.5 px-3 py-2 rounded-lg border transition-all ${isActive ? 'border-gray-400 bg-gray-800 shadow-lg' : 'border-gray-800 bg-gray-900 hover:border-gray-700 opacity-60'}">
           <span class="text-base">${RARITY[r].emoji}</span>
-          <span class="text-[9px] font-bold" style="color:${rarityColor[r] || '#888'}">${RARITY[r].label}</span>
-          ${last ? `<span class="text-[9px] text-gray-300">R$ ${last.toFixed(2)}</span>` : `<span class="text-[9px] text-gray-600">–</span>`}
+          <span class="text-[9px] font-bold" style="color:${RARITY[r].color}">${RARITY[r].label}</span>
+          ${last != null ? `<span class="text-[9px] text-gray-300">R$ ${last.toFixed(2)}</span>` : `<span class="text-[9px] text-gray-500">livre</span>`}
           <span class="text-[8px] text-gray-600">${asks.length} à venda</span>
         </button>`;
       }).join('')}
     </div>
 
     <!-- CHART SECTION -->
-    <div class="mb-6 bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+    <div class="mb-3 bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
       <div class="flex items-center justify-between px-4 pt-3 pb-2 border-b border-gray-800">
+        ${selectedRarity ? `
         <div class="flex items-center gap-2">
           <span class="text-base">${RARITY[selectedRarity].emoji}</span>
           <span class="text-sm font-bold" style="color:${selRarityColor}">${RARITY[selectedRarity].label}</span>
-          ${lastSoldPrice != null ? `<span class="text-sm font-bold text-white">R$ ${lastSoldPrice.toFixed(2)}</span>` : ''}
+          ${lastSoldPrice != null ? `<span class="text-sm font-bold text-white">R$ ${lastSoldPrice.toFixed(2)}</span>` : BASE_PRICE[selectedRarity] != null ? `<span class="text-xs text-gray-500">Base: R$ ${BASE_PRICE[selectedRarity].toFixed(2)}</span>` : `<span class="text-xs text-gray-500">Preço livre</span>`}
           ${priceChange != null ? `<span class="text-[10px] font-bold px-1.5 py-0.5 rounded ${priceChange >= 0 ? 'text-green-400 bg-green-900/30' : 'text-red-400 bg-red-900/30'}">${priceChange >= 0 ? '+' : ''}${priceChange.toFixed(1)}%</span>` : ''}
         </div>
         <div class="flex items-center gap-3 text-[10px] text-gray-500">
           ${lowestAsk != null ? `<span>Menor oferta: <b class="text-gray-300">R$ ${lowestAsk.toFixed(2)}</b></span>` : ''}
           <span>${selSoldPrices.length} vendas</span>
+          <button onclick="S.mktHistoryRarity=null; go('market')" class="text-gray-600 hover:text-white ml-1">✕</button>
         </div>
+        ` : `
+        <span class="text-xs text-gray-500 font-bold uppercase tracking-wider">📊 Todas as Raridades</span>
+        <span class="text-[10px] text-gray-600">Clique numa raridade para filtrar</span>
+        `}
       </div>
-      <div class="p-4 h-48 relative overflow-hidden">
-        ${renderMktHistoryGraph(history, selRarityColor)}
+      <div class="px-2 pt-2 pb-1 relative overflow-hidden" style="height:200px">
+        ${renderMktHistoryGraph(history, selectedRarity)}
+      </div>
+    </div>
+
+    <!-- INFO NONCE -->
+    <div class="mb-6 bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 flex gap-3 items-start">
+      <span class="text-lg mt-0.5">💡</span>
+      <div class="text-[10px] text-gray-400 leading-relaxed">
+        <b class="text-gray-200">Como funciona o valor de um grão?</b><br>
+        O <b class="text-gray-300">#01</b> é mais raro que o <b class="text-gray-300">#05</b> — ele foi o <b>primeiro colhido</b> naquela fazenda.<br>
+        A <b class="text-gray-300">raridade 0</b> (Nonce) indica a <b>tentativa em que foi gerado</b>: Nonce 1 saiu na primeira tentativa, Nonce 50 levou 50 tentativas. Quanto menor o Nonce, mais difícil foi gerar — logo, mais valioso.
       </div>
     </div>
 
@@ -2754,51 +2771,92 @@
   </div>`;
     }
 
-    function renderMktHistoryGraph(data, color) {
-      color = color || '#22c55e';
-      if (data.length < 2) {
-        return `<div class="absolute inset-0 flex flex-col items-center justify-center gap-1">
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#374151" stroke-width="1.5"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-          <span class="text-gray-600 text-[10px]">Nenhuma venda registrada ainda</span>
-        </div>`;
+    function renderMktHistoryGraph(allHistory, selectedRarity) {
+      const W = 1000, H = 220, PAD = 18;
+
+      // log scale Y: de R$0.10 a R$300
+      const LOG_MIN = Math.log10(0.10);
+      const LOG_MAX = Math.log10(300);
+      const yScale = p => {
+        if (!p || p <= 0) return H - PAD;
+        const l = Math.log10(Math.min(Math.max(p, 0.10), 300));
+        return H - PAD - ((l - LOG_MIN) / (LOG_MAX - LOG_MIN)) * (H - PAD * 2);
+      };
+
+      // agrupar histórico por raridade
+      const byRarity = {};
+      for (const r of ORDER) byRarity[r] = (allHistory || []).filter(d => d.rarity === r);
+
+      // linhas de grade de preço (referência)
+      const gridPrices = [0.25, 1, 5, 15, 40, 80, 200];
+      const gridLines = gridPrices.map(p => {
+        const y = yScale(p);
+        return `<line x1="0" y1="${y}" x2="${W}" y2="${y}" stroke="#1f2937" stroke-width="1" stroke-dasharray="4,6"/>
+                <text x="4" y="${y - 2}" fill="#374151" font-size="11" font-family="monospace">R$${p < 1 ? p.toFixed(2) : p >= 100 ? p.toFixed(0) : p}</text>`;
+      }).join('');
+
+      // desenha cada série
+      const hasSomeHistory = Object.values(byRarity).some(d => d.length > 0);
+      const series = ORDER.map(r => {
+        const color = RARITY[r].color;
+        const sales = byRarity[r];
+        const baseP = BASE_PRICE[r];
+        const isSelected = !selectedRarity || selectedRarity === r;
+        const opacity = isSelected ? 1 : 0.1;
+
+        let svg = '';
+
+        if (sales.length === 0) {
+          // só ponto base
+          if (baseP == null) return '';
+          const cy = yScale(baseP);
+          const cx = W / 2;
+          svg += `<circle cx="${cx}" cy="${cy}" r="6" fill="${color}" fill-opacity="${opacity}" stroke="#111" stroke-width="1.5"/>`;
+          if (isSelected) svg += `<text x="${cx + 10}" y="${cy + 4}" fill="${color}" font-size="11" font-family="monospace" opacity="${opacity}">R$${baseP.toFixed(2)}</text>`;
+        } else {
+          // linha de histórico + ponto base tracejado
+          const pts = sales.map((d, i) => {
+            const x = PAD + (i / Math.max(sales.length - 1, 1)) * (W - PAD * 2);
+            const y = yScale(parseFloat(d.price));
+            return [x, y];
+          });
+
+          // linha base tracejada (referência)
+          if (baseP != null) {
+            const by = yScale(baseP);
+            svg += `<line x1="0" y1="${by}" x2="${W}" y2="${by}" stroke="${color}" stroke-width="1" stroke-dasharray="3,8" opacity="${opacity * 0.4}"/>`;
+          }
+
+          // área preenchida
+          if (pts.length >= 2) {
+            const area = `M ${pts[0][0]},${H - PAD} ` + pts.map(p => `L ${p[0]},${p[1]}`).join(' ') + ` L ${pts[pts.length-1][0]},${H - PAD} Z`;
+            svg += `<path d="${area}" fill="${color}" fill-opacity="${opacity * 0.08}"/>`;
+            svg += `<polyline points="${pts.map(p => p.join(',')).join(' ')}" fill="none" stroke="${color}" stroke-width="${isSelected ? 2.5 : 1.5}" stroke-linejoin="round" stroke-linecap="round" opacity="${opacity}"/>`;
+          }
+
+          pts.forEach((p, i) => {
+            const price = parseFloat(sales[i].price);
+            svg += `<circle cx="${p[0]}" cy="${p[1]}" r="${isSelected ? 5 : 3}" fill="${color}" fill-opacity="${opacity}" stroke="#111" stroke-width="1"><title>${RARITY[r].label}: R$ ${price.toFixed(2)}</title></circle>`;
+          });
+
+          // label do último ponto se selecionado
+          if (isSelected && pts.length > 0) {
+            const lp = pts[pts.length - 1];
+            const lPrice = parseFloat(sales[sales.length - 1].price);
+            svg += `<text x="${lp[0] + 8}" y="${lp[1] + 4}" fill="${color}" font-size="11" font-family="monospace">R$${lPrice.toFixed(2)}</text>`;
+          }
+        }
+        return svg;
+      }).join('');
+
+      if (!hasSomeHistory && !ORDER.some(r => BASE_PRICE[r] != null)) {
+        return `<div class="absolute inset-0 flex items-center justify-center text-gray-600 text-[10px]">Sem dados</div>`;
       }
 
-      const prices = data.map(d => d.price);
-      const min = Math.min(...prices) * 0.9;
-      const max = Math.max(...prices) * 1.1;
-      const range = max - min || 1;
-
-      const width = 1000;
-      const height = 200;
-      const pts = data.map((d, i) => {
-        const x = (i / (data.length - 1)) * width;
-        const y = height - ((d.price - min) / range) * (height - 20) - 10;
-        return [x, y];
-      });
-      const points = pts.map(p => `${p[0]},${p[1]}`).join(' ');
-      const areaPath = `M ${pts[0][0]},${height} ` + pts.map(p => `L ${p[0]},${p[1]}`).join(' ') + ` L ${pts[pts.length-1][0]},${height} Z`;
-
-      const dates = data.map(d => d.sold_at ? new Date(d.sold_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) : '');
-      const firstDate = dates[0] || '';
-      const lastDate = dates[dates.length - 1] || '';
-
-      return `
-    <svg viewBox="0 0 ${width} ${height}" class="w-full h-full" preserveAspectRatio="none">
-      <defs>
-        <linearGradient id="mktgrad" x1="0%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%" style="stop-color:${color};stop-opacity:0.25" />
-          <stop offset="100%" style="stop-color:${color};stop-opacity:0.02" />
-        </linearGradient>
-      </defs>
-      <path d="${areaPath}" fill="url(#mktgrad)" />
-      <polyline fill="none" stroke="${color}" stroke-width="2.5" points="${points}" stroke-linejoin="round" stroke-linecap="round" />
-      ${pts.map((p, i) => `<circle cx="${p[0]}" cy="${p[1]}" r="5" fill="${color}" fill-opacity="0.9" stroke="#111" stroke-width="1.5"><title>R$ ${data[i].price.toFixed(2)}</title></circle>`).join('')}
-    </svg>
-    <div class="absolute top-2 right-3 text-[9px] text-gray-500">R$ ${max.toFixed(2)}</div>
-    <div class="absolute bottom-2 right-3 text-[9px] text-gray-500">R$ ${min.toFixed(2)}</div>
-    ${firstDate ? `<div class="absolute bottom-2 left-3 text-[9px] text-gray-600">${firstDate}</div>` : ''}
-    ${lastDate && lastDate !== firstDate ? `<div class="absolute bottom-2 left-1/2 -translate-x-1/2 text-[9px] text-gray-600">${lastDate}</div>` : ''}
-  `;
+      return `<svg viewBox="0 0 ${W} ${H}" class="w-full h-full" preserveAspectRatio="none">
+        ${gridLines}
+        ${series}
+      </svg>`;
     }
 
     function renderMarketSwap(listings, myGrains) {
