@@ -1327,17 +1327,17 @@
     }
 
     async function announceFromMarket() {
-      const rarityEl = document.getElementById('mkt-list-rarity');
       const priceEl = document.getElementById('mkt-list-price');
-      if (!rarityEl || !priceEl) return;
-      const rarity = rarityEl.value;
+      if (!priceEl) return;
       const price = parseFloat(priceEl.value);
       if (!price || price < 0.01) return toast('Informe um preço válido (mín. R$ 0,01)', 'warning');
 
-      const listings = S.data.marketBRLListings || [];
-      const myListedIds = new Set(listings.filter(l => l.seller_id === S.user.id && l.status !== 'cancelled').map(l => l.grain_id));
-      const g = await db.grains.where('owner').equals(S.user.id).filter(g => g.rarity === rarity && !g.lock_trade && !myListedIds.has(g.id)).first();
-      if (!g) return toast('Nenhum ' + (RARITY[rarity]?.label || rarity) + ' disponível para anunciar', 'warning');
+      const grainId = S.mktSelectedGrain;
+      if (!grainId) return toast('Selecione um grão para anunciar', 'warning');
+      const g = await db.grains.where('id').equals(grainId).first();
+      if (!g) return toast('Grão não encontrado no inventário', 'error');
+      if (g.lock_trade) return toast('Este grão já está bloqueado para troca', 'warning');
+      const rarity = g.rarity;
 
       const { error } = await sb.from('market_listings_brl').insert({
         seller_id: S.user.id,
@@ -1351,7 +1351,8 @@
       await db.grains.where('id').equals(g.id).modify({ lock_trade: true });
       await sb.from('grains').update({ lock_trade: true }).eq('id', g.id);
 
-      toast(`✅ ${RARITY[rarity]?.emoji} anunciado por R$ ${price.toFixed(2)}!`, 'success');
+      S.mktSelectedGrain = null;
+      toast(`✅ ${RARITY[rarity]?.emoji} ${g.id} anunciado por R$ ${price.toFixed(2)}!`, 'success');
       go('market');
     }
 
@@ -2269,22 +2270,46 @@
     <div class="mb-6 bg-gray-900 border border-gray-800 rounded-xl p-4">
       <h4 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">📤 Anunciar Item</h4>
       ${inventory.length === 0 ? `<p class="text-[10px] text-gray-600 italic">Sem grãos no inventário para anunciar.</p>` : `
-      <div class="grid grid-cols-2 gap-3 mb-3">
-        <div>
-          <label class="text-[9px] text-gray-500 uppercase block mb-1">Tipo de Grão</label>
-          <select id="mkt-list-rarity" onchange="S.mktListRarity=this.value; go('market')" class="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-xs outline-none">
-            ${ORDER.map(r => `<option value="${r}" ${listFormRarity === r ? 'selected' : ''}>${RARITY[r].emoji} ${RARITY[r].label} (${availableByRarity[r].length} disp.)</option>`).join('')}
-          </select>
-        </div>
-        <div>
-          <label class="text-[9px] text-gray-500 uppercase block mb-1">Preço (R$)</label>
-          <input type="number" id="mkt-list-price" min="0.01" step="0.01" placeholder="0.00" oninput="const p=document.getElementById('mkt-price-preview');if(p)p.textContent=parseFloat(this.value||0).toFixed(2)" class="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-xs outline-none focus:border-green-600" />
-        </div>
+      <!-- chips de raridade -->
+      <div class="flex flex-wrap gap-1.5 mb-3">
+        ${ORDER.slice().reverse().map(r => {
+          const cnt = availableByRarity[r].length;
+          if (cnt === 0) return '';
+          const active = listFormRarity === r;
+          return `<button onclick="S.mktListRarity='${r}'; S.mktSelectedGrain=null; go('market')" class="px-2 py-1 rounded text-[10px] border transition-all flex items-center gap-1" style="color:${RARITY[r].color};border-color:${active ? RARITY[r].color : RARITY[r].color+'30'};background:${active ? RARITY[r].color+'20' : 'transparent'}">
+            ${RARITY[r].emoji} ${RARITY[r].label} <span class="opacity-60">(${cnt})</span>
+          </button>`;
+        }).join('')}
       </div>
-      ${availableForListing.length === 0 ? `<p class="text-[10px] text-gray-600 italic mb-2">Nenhum ${RARITY[listFormRarity]?.label} disponível para anunciar.</p>` : `
-      <p class="text-[10px] text-gray-500 mb-3">Será anunciado um ${RARITY[listFormRarity]?.emoji} ${RARITY[listFormRarity]?.label} (${availableForListing.length} disponível). Taxa de 10% na venda.</p>
-      <button onclick="announceFromMarket()" class="w-full bg-green-700 hover:bg-green-600 text-white text-xs font-bold py-2 rounded-lg transition-all">Anunciar por R$ <span id="mkt-price-preview">--</span></button>
-      `}
+      <!-- lista de grãos da raridade selecionada -->
+      ${availableForListing.length === 0 ? `<p class="text-[10px] text-gray-600 italic">Nenhum ${RARITY[listFormRarity]?.label} disponível.</p>` : (() => {
+        const selGrain = S.mktSelectedGrain;
+        const color = RARITY[listFormRarity].color;
+        return `
+        <div class="bg-gray-950 border border-gray-800 rounded-lg p-2 mb-3 flex flex-wrap gap-1.5 max-h-36 overflow-y-auto">
+          ${availableForListing.sort((a,b) => (a.nonce||0) - (b.nonce||0)).map(g => {
+            const isSel = selGrain === g.id;
+            return `<button onclick="S.mktSelectedGrain=S.mktSelectedGrain==='${g.id}'?null:'${g.id}'; go('market')"
+              class="px-2 py-1 border rounded text-[10px] font-mono transition-colors flex flex-col items-center"
+              style="border-color:${isSel ? color : '#374151'};background:${isSel ? color+'30' : 'transparent'};color:${isSel ? '#fff' : '#9ca3af'}">
+              <span>${g.id}</span>
+              <span class="text-[8px] opacity-60">R: ${g.nonce||0}</span>
+            </button>`;
+          }).join('')}
+        </div>
+        ${selGrain ? `
+        <div class="flex gap-2 items-center">
+          <input type="number" id="mkt-list-price" min="0.01" step="0.01" placeholder="Preço (R$)"
+            oninput="const p=document.getElementById('mkt-price-preview');if(p)p.textContent=parseFloat(this.value||0).toFixed(2)"
+            class="flex-1 bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm outline-none focus:border-green-600" />
+          <button onclick="announceFromMarket()" class="bg-green-700 hover:bg-green-600 text-white text-xs font-bold px-4 py-2 rounded-lg transition-all whitespace-nowrap">
+            Anunciar · R$ <span id="mkt-price-preview">--</span>
+          </button>
+        </div>
+        <p class="text-[9px] text-gray-600 mt-1">Taxa de 10% descontada na venda. O grão fica bloqueado até ser vendido ou cancelado.</p>
+        ` : `<p class="text-[10px] text-gray-500 italic">Selecione um grão acima para anunciar.</p>`}
+        `;
+      })()}
       `}
     </div>
 
