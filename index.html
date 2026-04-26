@@ -1522,12 +1522,7 @@
     async function loadLocalInventory(userId) {
       const all = await db.grains.where('owner').equals(userId).toArray();
       S.data.inventoryTotal = all.length;
-      if (all.length <= INVENTORY_LIMIT) return all;
-      // ordena raro→comum, pega os INVENTORY_LIMIT mais valiosos
-      return [...all].sort((a, b) =>
-        ORDER.indexOf(a.rarity) - ORDER.indexOf(b.rarity) ||
-        new Date(b.generated_at) - new Date(a.generated_at)
-      ).slice(0, INVENTORY_LIMIT);
+      return all;
     }
 
     async function loadInventoryFromSupabase(userId) {
