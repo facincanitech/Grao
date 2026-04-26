@@ -2349,24 +2349,54 @@
       ` : ''}
 
       <!-- LISTAGEM GLOBAL -->
-      <div class="text-[10px] font-bold text-gray-500 uppercase mb-2">Itens Disponíveis</div>
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        ${activeListings.length === 0 ? '<p class="text-[10px] text-gray-600 py-4 col-span-2 text-center italic">Nenhum item à venda no momento.</p>' : activeListings.map(l => `
-          <div class="bg-gray-950 border border-gray-800 p-3 rounded-xl flex justify-between items-center group hover:border-green-900/30 transition-all">
-            <div class="flex items-center gap-3">
-              <div class="w-10 h-10 bg-gray-900 rounded-lg flex items-center justify-center text-xl shadow-inner">${RARITY[l.rarity]?.emoji || '🌾'}</div>
-              <div>
-                <div class="text-xs font-bold">${l.grain_id}</div>
-                <div class="text-[9px] text-gray-500">Vendedor: <span class="text-gray-300">${l.seller_name}</span></div>
+      ${(() => {
+        const mktFilter = S.mktFilter || 'all';
+        const mktSort = S.mktSort || 'rarity_asc'; // rarity_asc = alta→baixa (raridade), rarity_desc = baixa→alta
+        let shown = [...activeListings];
+        if (mktFilter !== 'all') shown = shown.filter(l => l.rarity === mktFilter);
+        // ORDER: index 0 = niobium (mais raro), last = brass (mais comum)
+        // rarity_asc = mais raro primeiro (menor index no ORDER)
+        // rarity_desc = mais comum primeiro (maior index)
+        shown.sort((a, b) => {
+          if (mktSort === 'price_asc') return parseFloat(a.price) - parseFloat(b.price);
+          if (mktSort === 'price_desc') return parseFloat(b.price) - parseFloat(a.price);
+          if (mktSort === 'rarity_desc') return ORDER.indexOf(a.rarity) - ORDER.indexOf(b.rarity);
+          return ORDER.indexOf(a.rarity) - ORDER.indexOf(b.rarity); // rarity_asc padrão (raro→comum)
+        });
+
+        const rarityTotals = {};
+        for (const r of ORDER) rarityTotals[r] = activeListings.filter(l => l.rarity === r).length;
+
+        return `
+        <div class="flex flex-wrap gap-1.5 mb-2">
+          <button onclick="S.mktFilter='all'; go('market')" class="px-2 py-0.5 rounded text-[10px] border transition-all ${mktFilter === 'all' ? 'bg-gray-700 border-gray-500 text-white' : 'bg-gray-900 border-gray-800 text-gray-400'}">Todos (${activeListings.length})</button>
+          ${ORDER.slice().reverse().map(r => rarityTotals[r] > 0 ? `<button onclick="S.mktFilter='${r}'; go('market')" class="px-2 py-0.5 rounded text-[10px] border transition-all" style="color:${RARITY[r].color};border-color:${mktFilter===r ? RARITY[r].color : RARITY[r].color+'25'};background:${mktFilter===r ? RARITY[r].color+'20' : 'transparent'}">${RARITY[r].emoji} ${RARITY[r].label} (${rarityTotals[r]})</button>` : '').join('')}
+        </div>
+        <div class="flex gap-1.5 mb-3">
+          <button onclick="S.mktSort='rarity_asc'; go('market')" class="px-2 py-0.5 rounded text-[10px] border transition-all ${mktSort==='rarity_asc' ? 'bg-gray-700 border-gray-500 text-white' : 'bg-gray-900 border-gray-800 text-gray-400'}">⬆ Raro → Comum</button>
+          <button onclick="S.mktSort='rarity_desc'; go('market')" class="px-2 py-0.5 rounded text-[10px] border transition-all ${mktSort==='rarity_desc' ? 'bg-gray-700 border-gray-500 text-white' : 'bg-gray-900 border-gray-800 text-gray-400'}">⬇ Comum → Raro</button>
+          <button onclick="S.mktSort='price_asc'; go('market')" class="px-2 py-0.5 rounded text-[10px] border transition-all ${mktSort==='price_asc' ? 'bg-gray-700 border-gray-500 text-white' : 'bg-gray-900 border-gray-800 text-gray-400'}">R$ ↑</button>
+          <button onclick="S.mktSort='price_desc'; go('market')" class="px-2 py-0.5 rounded text-[10px] border transition-all ${mktSort==='price_desc' ? 'bg-gray-700 border-gray-500 text-white' : 'bg-gray-900 border-gray-800 text-gray-400'}">R$ ↓</button>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          ${shown.length === 0 ? '<p class="text-[10px] text-gray-600 py-4 col-span-2 text-center italic">Nenhum item à venda nesta categoria.</p>' : shown.map(l => `
+            <div class="bg-gray-950 border p-3 rounded-xl flex justify-between items-center group hover:border-green-900/30 transition-all" style="border-color:${RARITY[l.rarity]?.color+'20' || '#1f2937'}">
+              <div class="flex items-center gap-3">
+                <div class="w-10 h-10 bg-gray-900 rounded-lg flex items-center justify-center text-xl shadow-inner">${RARITY[l.rarity]?.emoji || '🌾'}</div>
+                <div>
+                  <div class="text-xs font-bold" style="color:${RARITY[l.rarity]?.color}">${RARITY[l.rarity]?.label || l.rarity}</div>
+                  <div class="text-[9px] text-gray-600 font-mono">${l.grain_id}</div>
+                  <div class="text-[9px] text-gray-500">por <span class="text-gray-300">${l.seller_name}</span></div>
+                </div>
+              </div>
+              <div class="text-right">
+                <div class="text-xs font-bold text-green-400 mb-1">R$ ${parseFloat(l.price).toFixed(2)}</div>
+                <button onclick="solicitarCompraP2P('${l.id}')" class="bg-gray-800 hover:bg-green-600 text-white text-[10px] px-3 py-1 rounded font-bold transition-all">COMPRAR</button>
               </div>
             </div>
-            <div class="text-right">
-              <div class="text-xs font-bold text-green-400 mb-1">R$ ${parseFloat(l.price).toFixed(2)}</div>
-              <button onclick="solicitarCompraP2P('${l.id}')" class="bg-gray-800 hover:bg-green-600 text-white text-[10px] px-3 py-1 rounded font-bold transition-all">COMPRAR</button>
-            </div>
-          </div>
-        `).join('')}
-      </div>
+          `).join('')}
+        </div>`;
+      })()}
     </div>
   `;
     }
