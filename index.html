@@ -2247,8 +2247,11 @@
         <span class="text-[10px] text-gray-600">Clique numa raridade para filtrar</span>
         `}
       </div>
-      <div class="px-2 pt-2 pb-1 relative overflow-hidden" style="height:200px">
-        ${renderMktHistoryGraph(history, selectedRarity)}
+      <div class="flex gap-1 px-3 pt-2">
+        ${['24h','7d','30d','tudo'].map(p => `<button onclick="S.mktPeriod='${p}'; go('market')" class="px-2 py-0.5 rounded text-[10px] border transition-all ${(S.mktPeriod||'tudo')===p ? 'bg-gray-700 border-gray-500 text-white' : 'bg-transparent border-gray-800 text-gray-500 hover:text-gray-300'}">${p}</button>`).join('')}
+      </div>
+      <div class="px-2 pt-1 pb-1 relative overflow-hidden" style="height:200px">
+        ${renderMktHistoryGraph(history, selectedRarity, S.mktPeriod || 'tudo')}
       </div>
     </div>
 
@@ -2801,8 +2804,18 @@
   </div>`;
     }
 
-    function renderMktHistoryGraph(allHistory, selectedRarity) {
+    function renderMktHistoryGraph(allHistory, selectedRarity, period) {
       const W = 1000, H = 220, PAD = 18;
+
+      // filtro de período
+      let cutoff = null;
+      const now = Date.now();
+      if (period === '24h') cutoff = now - 86400000;
+      else if (period === '7d') cutoff = now - 7 * 86400000;
+      else if (period === '30d') cutoff = now - 30 * 86400000;
+      const filteredHistory = cutoff
+        ? (allHistory || []).filter(d => d.sold_at && new Date(d.sold_at).getTime() >= cutoff)
+        : (allHistory || []);
 
       // log scale Y: de R$0.10 a R$300
       const LOG_MIN = Math.log10(0.10);
@@ -2815,7 +2828,9 @@
 
       // agrupar histórico por raridade
       const byRarity = {};
-      for (const r of ORDER) byRarity[r] = (allHistory || []).filter(d => d.rarity === r);
+      for (const r of ORDER) byRarity[r] = filteredHistory.filter(d => d.rarity === r);
+
+      const hasSomeData = Object.values(byRarity).some(d => d.length > 0);
 
       // linhas de grade de preço (referência)
       const gridPrices = [0.25, 1, 5, 15, 40, 80, 200];
@@ -2826,7 +2841,6 @@
       }).join('');
 
       // desenha cada série
-      const hasSomeHistory = Object.values(byRarity).some(d => d.length > 0);
       const series = ORDER.map(r => {
         const color = RARITY[r].color;
         const sales = byRarity[r];
@@ -2879,7 +2893,7 @@
         return svg;
       }).join('');
 
-      if (!hasSomeHistory && !ORDER.some(r => BASE_PRICE[r] != null)) {
+      if (!hasSomeData && !ORDER.some(r => BASE_PRICE[r] != null)) {
         return `<div class="absolute inset-0 flex items-center justify-center text-gray-600 text-[10px]">Sem dados</div>`;
       }
 
