@@ -2276,7 +2276,7 @@
           const cnt = availableByRarity[r].length;
           if (cnt === 0) return '';
           const active = listFormRarity === r;
-          return `<button onclick="S.mktListRarity='${r}'; S.mktSelectedGrain=null; go('market')" class="px-2 py-1 rounded text-[10px] border transition-all flex items-center gap-1" style="color:${RARITY[r].color};border-color:${active ? RARITY[r].color : RARITY[r].color+'30'};background:${active ? RARITY[r].color+'20' : 'transparent'}">
+          return `<button onclick="S.mktListRarity='${r}'; S.mktSelectedGrain=null; render()" class="px-2 py-1 rounded text-[10px] border transition-all flex items-center gap-1" style="color:${RARITY[r].color};border-color:${active ? RARITY[r].color : RARITY[r].color+'30'};background:${active ? RARITY[r].color+'20' : 'transparent'}">
             ${RARITY[r].emoji} ${RARITY[r].label} <span class="opacity-60">(${cnt})</span>
           </button>`;
         }).join('')}
@@ -2289,9 +2289,10 @@
         <div class="bg-gray-950 border border-gray-800 rounded-lg p-2 mb-3 flex flex-wrap gap-1.5 max-h-36 overflow-y-auto">
           ${availableForListing.sort((a,b) => (a.nonce||0) - (b.nonce||0)).map(g => {
             const isSel = selGrain === g.id;
-            return `<button onclick="S.mktSelectedGrain=S.mktSelectedGrain==='${g.id}'?null:'${g.id}'; go('market')"
+            return `<button onclick="S.mktSelectedGrain=S.mktSelectedGrain==='${g.id}'?null:'${g.id}'; render()"
               class="px-2 py-1 border rounded text-[10px] font-mono transition-colors flex flex-col items-center"
-              style="border-color:${isSel ? color : '#374151'};background:${isSel ? color+'30' : 'transparent'};color:${isSel ? '#fff' : '#9ca3af'}">
+              style="border-color:${isSel ? color : '#374151'};background:${isSel ? color+'30' : 'transparent'};color:${isSel ? '#fff' : '#9ca3af'}"
+              onclick="S.mktSelectedGrain=S.mktSelectedGrain==='${g.id}'?null:'${g.id}'; render()">
               <span>${g.id}</span>
               <span class="text-[8px] opacity-60">R: ${g.nonce||0}</span>
             </button>`;
