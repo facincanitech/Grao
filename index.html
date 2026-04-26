@@ -3273,7 +3273,27 @@
 
     window.evtSelections = { forge: new Set(), gacha: new Set() };
     window.evtLastSel = { forge: null, gacha: null };
+    window.evtCurSel  = { forge: null, gacha: null };
     window.evtAvailable = [];
+
+    window.selectEvtRarity = function(type, rarity) {
+      window.evtCurSel[type] = rarity;
+      window.evtLastSel[type] = rarity;
+      // atualiza visual dos chips sem re-render completo
+      document.querySelectorAll(`.evt-${type}-chip`).forEach(btn => {
+        const r = btn.dataset.rarity;
+        const c = btn.dataset.color;
+        const active = r === rarity;
+        btn.style.background   = active ? c + '25' : 'transparent';
+        btn.style.borderColor  = active ? c : c + '30';
+        btn.style.color        = c;
+      });
+      // sincroniza select oculto e dispara preview
+      const sel = document.getElementById(`evt-${type}-sel`);
+      if (sel) sel.value = rarity;
+      if (type === 'forge') window.updateForgePreview?.();
+      else window.updateGachaPreview?.();
+    };
 
     function pageEventSync() {
       if (!S.user) return pageLogin();
@@ -3351,9 +3371,22 @@
 
         <div class="bg-gray-950 rounded p-3 mb-2 flex-1 flex flex-col">
           <label class="text-[10px] text-gray-500 block mb-1">Selecionar Material (${getLabel('forge_cost')})</label>
-          <select id="evt-forge-sel" class="w-full bg-gray-800 border border-gray-700 rounded px-2 py-2 text-sm focus:border-orange-500 outline-none mb-2" onchange="window.updateForgePreview()">
-            <option value="">-- Escolha um material --</option>
-            ${forgeableOptions.map(o => `<option value="${o.id}" ${o.count < 10 ? 'disabled' : ''}>${o.emoji} ${o.label} (Você tem: ${o.count})</option>`).join('')}
+          <div class="flex flex-wrap gap-1 mb-2">
+            ${forgeableOptions.map(o => {
+              const active = window.evtCurSel?.forge === o.id;
+              const c = RARITY[o.id].color;
+              const disabled = o.count < 10;
+              return `<button ${disabled ? 'disabled' : `onclick="window.selectEvtRarity('forge','${o.id}')"`}
+                class="evt-forge-chip px-2 py-1 rounded text-[10px] font-medium border transition-all ${disabled ? 'opacity-30 cursor-not-allowed' : 'hover:brightness-125'}"
+                data-rarity="${o.id}" data-color="${c}"
+                style="color:${c};border-color:${active?c:c+'30'};background:${active?c+'25':'transparent'}">
+                ${o.emoji} ${o.label} (${o.count})
+              </button>`;
+            }).join('')}
+          </div>
+          <select id="evt-forge-sel" class="hidden" onchange="window.updateForgePreview()">
+            <option value="">-- Escolha --</option>
+            ${forgeableOptions.map(o => `<option value="${o.id}">${o.emoji} ${o.label}</option>`).join('')}
           </select>
           <div id="forge-preview" class="text-xs text-gray-400 text-center py-2 bg-gray-900 rounded border border-gray-800 mb-2 min-h-[34px]"></div>
 
@@ -3387,9 +3420,22 @@
 
         <div class="bg-gray-950 rounded p-3 mb-2 flex-1 flex flex-col">
           <label class="text-[10px] text-gray-500 block mb-1">Selecionar Aposta (${getLabel('casino_cost')})</label>
-          <select id="evt-gacha-sel" class="w-full bg-gray-800 border border-gray-700 rounded px-2 py-2 text-sm focus:border-purple-500 outline-none mb-2" onchange="window.updateGachaPreview()">
-            <option value="">-- Escolha um material --</option>
-            ${forgeableOptions.map(o => `<option value="${o.id}" ${o.count < 5 ? 'disabled' : ''}>${o.emoji} ${o.label} (Você tem: ${o.count})</option>`).join('')}
+          <div class="flex flex-wrap gap-1 mb-2">
+            ${forgeableOptions.map(o => {
+              const active = window.evtCurSel?.gacha === o.id;
+              const c = RARITY[o.id].color;
+              const disabled = o.count < 5;
+              return `<button ${disabled ? 'disabled' : `onclick="window.selectEvtRarity('gacha','${o.id}')"`}
+                class="evt-gacha-chip px-2 py-1 rounded text-[10px] font-medium border transition-all ${disabled ? 'opacity-30 cursor-not-allowed' : 'hover:brightness-125'}"
+                data-rarity="${o.id}" data-color="${c}"
+                style="color:${c};border-color:${active?c:c+'30'};background:${active?c+'25':'transparent'}">
+                ${o.emoji} ${o.label} (${o.count})
+              </button>`;
+            }).join('')}
+          </div>
+          <select id="evt-gacha-sel" class="hidden" onchange="window.updateGachaPreview()">
+            <option value="">-- Escolha --</option>
+            ${forgeableOptions.map(o => `<option value="${o.id}">${o.emoji} ${o.label}</option>`).join('')}
           </select>
           <div class="text-[10px] text-gray-500 text-center py-2 bg-gray-900 rounded border border-gray-800 mb-2 min-h-[34px] flex flex-col justify-center">
             <span>Risco: Alto | Jackpot: +5 Níveis (0.05%)</span>
@@ -3574,13 +3620,8 @@
       window.evtSelections[type].clear();
       if (S.user) S.data.inventory = await loadLocalInventory(S.user.id);
       render();
-      // restaura última seleção após render reconstruir o DOM
-      const restoredSel = document.getElementById(`evt-${type}-sel`);
-      if (restoredSel && window.evtLastSel[type]) {
-        restoredSel.value = window.evtLastSel[type];
-        if (type === 'forge') window.updateForgePreview?.();
-        else window.updateGachaPreview?.();
-      }
+      // restaura chip selecionado e lista de grãos após render
+      if (window.evtCurSel[type]) window.selectEvtRarity(type, window.evtCurSel[type]);
     };
 
     function pageLogin() {
@@ -3614,8 +3655,16 @@
     // ═══════════════════════════════════════════════════════
     // HANDLERS DOM
     // ═══════════════════════════════════════════════════════
-    function setFilter(r) { S.filter = r; render() }
-    function setInventorySort(s) { S.inventorySort = s; render() }
+    async function setFilter(r) {
+      S.filter = r;
+      if (S.user) S.data.inventory = await loadLocalInventory(S.user.id);
+      render();
+    }
+    async function setInventorySort(s) {
+      S.inventorySort = s;
+      if (S.user) S.data.inventory = await loadLocalInventory(S.user.id);
+      render();
+    }
 
     async function doGenerateTransfer() {
       let target = document.getElementById('tr-target')?.value?.trim();
