@@ -260,6 +260,10 @@
       transition: width 0.3s ease
     }
 
+    @keyframes tickerScroll {
+      0%   { transform: translateX(0); }
+      100% { transform: translateX(-50%); }
+    }
     @keyframes fadeIn {
       from {
         opacity: 0;
@@ -1728,7 +1732,29 @@
   </header>
   ${u ? `<nav class="sm:hidden flex gap-1 px-4 py-2 bg-gray-950 border-b border-gray-900 overflow-x-auto scrollbar-thin">
     ${nb('inventory', '📦')}${nb('mine', '⛏️')}${nb('market', '🛒')}${nb('ranking', '🏆')}${nb('event', '🎲')}${nb('bank', '🏦')}${nb('store', '⭐')}
-  </nav>`: ''}`;
+  </nav>`: ''}
+  ${renderPriceTicker()}`;
+    }
+
+    function renderPriceTicker() {
+      const listings = S.data.marketBRLListings || [];
+      const sold = listings.filter(l => l.status === 'sold').sort((a,b) => new Date(a.sold_at||0) - new Date(b.sold_at||0));
+
+      const items = ORDER.slice().reverse().map(r => {
+        const lastSale = sold.filter(l => l.rarity === r).pop();
+        const price = lastSale ? parseFloat(lastSale.price) : BASE_PRICE[r];
+        const priceStr = price == null ? 'LIVRE' : `R$${price.toFixed(2)}`;
+        return `<span style="color:${RARITY[r].color};font-size:11px;letter-spacing:1px;white-space:nowrap">${RARITY[r].emoji} ${RARITY[r].label.toUpperCase()} <b style="color:#fff">${priceStr}</b></span>`;
+      }).join('<span style="color:#333;margin:0 16px">·</span>');
+
+      // duplicate for seamless loop
+      const track = items + '<span style="color:#333;margin:0 24px">·</span>' + items;
+
+      return `<div style="height:24px;background:#0a0a0a;border-bottom:1px solid #1a1a1a;overflow:hidden;display:flex;align-items:center;position:relative">
+        <div style="display:flex;align-items:center;gap:0;animation:tickerScroll 30s linear infinite;white-space:nowrap;padding-left:100%">
+          ${track}
+        </div>
+      </div>`;
     }
 
     // ═══════════════════════════════════════════════════════
