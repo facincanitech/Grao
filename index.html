@@ -1845,7 +1845,7 @@
         return ORDER.indexOf(a.rarity) - ORDER.indexOf(b.rarity) || a.generated_at - b.generated_at;
       });
 
-      const total = S.data.inventoryTotal || all.length;
+      const total = all.length;
       const overLimit = total > INVENTORY_LIMIT;
       return `<div class="p-4 sm:p-6">
     <div class="flex flex-wrap gap-2 mb-3">
@@ -1868,13 +1868,13 @@
     </div>
     ${overLimit ? `<div class="mb-4 flex items-start gap-2 bg-gray-900 border border-gray-800 rounded-lg px-3 py-2 text-[11px] text-gray-400">
       <span class="shrink-0">📦</span>
-      <span>Você tem <strong class="text-gray-200">${total.toLocaleString('pt-BR')} ${getLabel('grain_pl').toLowerCase()}</strong>. Para liberar espaço use a <button onclick="go('event')" class="text-orange-400 hover:underline">Debulhadora</button>, o <button onclick="go('event')" class="text-purple-400 hover:underline">Cassino</button> ou <button onclick="go('market')" class="text-cyan-400 hover:underline">Resgatar Grão</button> na aba Vender.</span>
+      <span>O inventário exibe apenas os <strong class="text-gray-200">${INVENTORY_LIMIT} primeiros</strong> de <strong class="text-gray-200">${total.toLocaleString('pt-BR')}</strong> ${getLabel('grain_pl').toLowerCase()} — o restante está oculto para não pesar o processamento. Use a <button onclick="go('event')" class="text-orange-400 hover:underline">Debulhadora</button>, o <button onclick="go('event')" class="text-purple-400 hover:underline">Cassino</button> ou <button onclick="go('market')" class="text-cyan-400 hover:underline">Resgatar Grão</button> para reduzir o inventário.</span>
     </div>` : ''}
-    ${sorted.length === 0 ? `<div class="text-center py-20 text-gray-600">
+    ${sorted.slice(0, INVENTORY_LIMIT).length === 0 ? `<div class="text-center py-20 text-gray-600">
       <div class="text-6xl mb-4">🌾</div>
       <div class="text-lg mb-2">Nenhuma ${getLabel('grain').toLowerCase()} aqui</div>
       <button onclick="go('mine')" class="text-cyan-400 hover:underline text-sm">Ir para ${getLabel('mining')} →</button>
-    </div>`: `<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">${sorted.map(g => grainCard(g)).join('')}</div>`}
+    </div>`: `<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">${sorted.slice(0, INVENTORY_LIMIT).map(g => grainCard(g)).join('')}</div>`}
   </div>`;
     }
 
