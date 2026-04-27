@@ -1847,6 +1847,7 @@
 
       const total = all.length;
       const overLimit = total > INVENTORY_LIMIT;
+      const NONCE_MIN = 15;
       return `<div class="p-4 sm:p-6">
     <div class="flex flex-wrap gap-2 mb-3">
       <button onclick="setFilter('all')" class="px-3 py-1 rounded text-xs font-medium transition-colors border ${S.filter === 'all' ? 'bg-gray-700 border-gray-500 text-white' : 'bg-gray-900 border-gray-800 text-gray-400 hover:bg-gray-800'}">
@@ -1868,13 +1869,19 @@
     </div>
     ${overLimit ? `<div class="mb-4 flex items-start gap-2 bg-gray-900 border border-gray-800 rounded-lg px-3 py-2 text-[11px] text-gray-400">
       <span class="shrink-0">📦</span>
-      <span>O inventário exibe apenas os <strong class="text-gray-200">${INVENTORY_LIMIT} primeiros</strong> de <strong class="text-gray-200">${total.toLocaleString('pt-BR')}</strong> ${getLabel('grain_pl').toLowerCase()} — o restante está oculto para não pesar o processamento. Use a <button onclick="go('event')" class="text-orange-400 hover:underline">Debulhadora</button>, o <button onclick="go('event')" class="text-purple-400 hover:underline">Cassino</button> ou <button onclick="go('market')" class="text-cyan-400 hover:underline">Resgatar Grão</button> para reduzir o inventário.</span>
+      <span>Inventário cheio — exibindo até <strong class="text-gray-200">${INVENTORY_LIMIT}</strong> de <strong class="text-gray-200">${total.toLocaleString('pt-BR')}</strong> ${getLabel('grain_pl').toLowerCase()}. Grãos com raridade ≤ ${NONCE_MIN} estão ocultos para não pesar o processamento. Torra os comuns na <button onclick="go('event')" class="text-orange-400 hover:underline">Debulhadora</button>, no <button onclick="go('event')" class="text-purple-400 hover:underline">Cassino</button> ou <button onclick="go('market')" class="text-cyan-400 hover:underline">Resgate</button> na aba Vender.</span>
     </div>` : ''}
-    ${sorted.slice(0, INVENTORY_LIMIT).length === 0 ? `<div class="text-center py-20 text-gray-600">
-      <div class="text-6xl mb-4">🌾</div>
-      <div class="text-lg mb-2">Nenhuma ${getLabel('grain').toLowerCase()} aqui</div>
-      <button onclick="go('mine')" class="text-cyan-400 hover:underline text-sm">Ir para ${getLabel('mining')} →</button>
-    </div>`: `<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">${sorted.slice(0, INVENTORY_LIMIT).map(g => grainCard(g)).join('')}</div>`}
+    ${(() => {
+        const display = overLimit
+          ? sorted.filter(g => (g.nonce || 0) > NONCE_MIN).slice(0, INVENTORY_LIMIT)
+          : sorted.slice(0, INVENTORY_LIMIT);
+        if (display.length === 0) return `<div class="text-center py-20 text-gray-600">
+          <div class="text-6xl mb-4">🌾</div>
+          <div class="text-lg mb-2">Nenhuma ${getLabel('grain').toLowerCase()} aqui</div>
+          <button onclick="go('mine')" class="text-cyan-400 hover:underline text-sm">Ir para ${getLabel('mining')} →</button>
+        </div>`;
+        return `<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">${display.map(g => grainCard(g)).join('')}</div>`;
+      })()}
   </div>`;
     }
 
