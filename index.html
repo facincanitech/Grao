@@ -386,7 +386,8 @@
     const ORDER = ['niobium', 'bismuth', 'opal', 'uranium', 'diamond', 'gold', 'silver', 'copper', 'brass'];
     const SCORES = { niobium: 100000, bismuth: 10000, opal: 1000, uranium: 500, diamond: 100, gold: 20, silver: 5, copper: 2, brass: 1 };
     const BASE_PRICE = { brass: 0.25, copper: 0.50, silver: 1.50, gold: 5.00, diamond: 15.00, uranium: 40.00, opal: 80.00, bismuth: 200.00, niobium: null };
-    const INVENTORY_LIMIT = 200;
+    const INVENTORY_LIMIT = 500;
+    const INVENTORY_WARN  = 400;
 
     // Salva defaults para restaurar ao trocar de skin
     const _RARITY_DEFAULTS = {};
@@ -1847,6 +1848,7 @@
 
       const total = all.length;
       const overLimit = total > INVENTORY_LIMIT;
+      const showWarn  = total > INVENTORY_WARN;
       const NONCE_MIN = 15;
       return `<div class="p-4 sm:p-6">
     <div class="flex flex-wrap gap-2 mb-3">
@@ -1867,9 +1869,9 @@
         ↑ Comum → Raro
       </button>
     </div>
-    ${overLimit ? `<div class="mb-4 flex items-start gap-2 bg-gray-900 border border-gray-800 rounded-lg px-3 py-2 text-[11px] text-gray-400">
+    ${showWarn ? `<div class="mb-4 flex items-start gap-2 bg-gray-900 border border-gray-800 rounded-lg px-3 py-2 text-[11px] text-gray-400">
       <span class="shrink-0">📦</span>
-      <span>Inventário cheio — exibindo até <strong class="text-gray-200">${INVENTORY_LIMIT}</strong> de <strong class="text-gray-200">${total.toLocaleString('pt-BR')}</strong> ${getLabel('grain_pl').toLowerCase()}. Grãos com raridade ≤ ${NONCE_MIN} estão ocultos para não pesar o processamento. Torra os comuns na <button onclick="go('event')" class="text-orange-400 hover:underline">Debulhadora</button>, no <button onclick="go('event')" class="text-purple-400 hover:underline">Cassino</button> ou <button onclick="go('market')" class="text-cyan-400 hover:underline">Resgate</button> na aba Vender.</span>
+      <span><strong class="text-gray-200">${total.toLocaleString('pt-BR')} ${getLabel('grain_pl').toLowerCase()}</strong> no inventário — o limite máximo exibido é <strong class="text-gray-200">${INVENTORY_LIMIT}</strong>, pois renderizar mais de ${INVENTORY_LIMIT} cards sobrecarrega o app. ${overLimit ? `Grãos com raridade ≤ ${NONCE_MIN} estão ocultos. ` : ''}Torra os comuns na <button onclick="go('event')" class="text-orange-400 hover:underline">Debulhadora</button>, no <button onclick="go('event')" class="text-purple-400 hover:underline">Cassino</button> ou <button onclick="go('market')" class="text-cyan-400 hover:underline">Resgate</button> na aba Vender.</span>
     </div>` : ''}
     ${(() => {
         const display = overLimit
