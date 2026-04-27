@@ -1848,13 +1848,9 @@
       const total = S.data.inventoryTotal || all.length;
       const overLimit = total > INVENTORY_LIMIT;
       return `<div class="p-4 sm:p-6">
-    ${overLimit ? `<div class="mb-4 flex items-start gap-2 bg-orange-900/20 border border-orange-700/40 rounded-lg px-3 py-2 text-[11px] text-orange-300">
-      <span class="text-base leading-none mt-0.5">📦</span>
-      <span>Você tem <strong>${total.toLocaleString('pt-BR')} ${getLabel('grain_pl').toLowerCase()}</strong> no total, mas só os <strong>${INVENTORY_LIMIT} mais raros</strong> estão visíveis. Use a <button onclick="go('event')" class="underline hover:text-white">Debulhadora</button> ou o <button onclick="go('event')" class="underline hover:text-white">Cassino</button> para converter grãos comuns em raridades superiores, ou <button onclick="go('market')" class="underline hover:text-white">Resgatar Grão</button> na aba Vender para removê-los do app.</span>
-    </div>` : ''}
     <div class="flex flex-wrap gap-2 mb-3">
       <button onclick="setFilter('all')" class="px-3 py-1 rounded text-xs font-medium transition-colors border ${S.filter === 'all' ? 'bg-gray-700 border-gray-500 text-white' : 'bg-gray-900 border-gray-800 text-gray-400 hover:bg-gray-800'}">
-        Todos (${overLimit ? `${all.length}/${total.toLocaleString('pt-BR')}` : all.length})
+        Todos (${all.length})
       </button>
       ${ORDER.map(r => `<button onclick="setFilter('${r}')"
         class="px-3 py-1 rounded text-xs font-medium transition-colors border"
@@ -1862,7 +1858,7 @@
         ${RARITY[r].emoji} ${RARITY[r].label} (${counts[r]})
       </button>`).join('')}
     </div>
-    <div class="flex gap-2 mb-5">
+    <div class="flex gap-2 mb-3">
       <button onclick="setInventorySort('rarity_desc')" class="px-3 py-1 rounded text-xs font-medium transition-colors border ${sort === 'rarity_desc' ? 'bg-gray-700 border-gray-500 text-white' : 'bg-gray-900 border-gray-800 text-gray-400 hover:bg-gray-800'}">
         ↓ Raro → Comum
       </button>
@@ -1870,6 +1866,10 @@
         ↑ Comum → Raro
       </button>
     </div>
+    ${overLimit ? `<div class="mb-4 flex items-start gap-2 bg-gray-900 border border-gray-800 rounded-lg px-3 py-2 text-[11px] text-gray-400">
+      <span class="shrink-0">📦</span>
+      <span>Você tem <strong class="text-gray-200">${total.toLocaleString('pt-BR')} ${getLabel('grain_pl').toLowerCase()}</strong>. Para liberar espaço use a <button onclick="go('event')" class="text-orange-400 hover:underline">Debulhadora</button>, o <button onclick="go('event')" class="text-purple-400 hover:underline">Cassino</button> ou <button onclick="go('market')" class="text-cyan-400 hover:underline">Resgatar Grão</button> na aba Vender.</span>
+    </div>` : ''}
     ${sorted.length === 0 ? `<div class="text-center py-20 text-gray-600">
       <div class="text-6xl mb-4">🌾</div>
       <div class="text-lg mb-2">Nenhuma ${getLabel('grain').toLowerCase()} aqui</div>
