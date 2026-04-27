@@ -1534,7 +1534,7 @@
         if (count != null) S.data.inventoryTotal = count;
 
         const { data, error } = await sb.from('grains')
-          .select('id,rarity,generated_at,lock_trade')
+          .select('id,owner,rarity,generated_at,lock_trade')
           .eq('owner', userId)
           .order('generated_at', { ascending: false })
           .limit(INVENTORY_LIMIT);
